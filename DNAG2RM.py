@@ -172,11 +172,11 @@ def transfer_dna_data(dnagedcom_db_path, rootsmagic_db_path):
         conn_rm.close()
 
 # Uncomment the lines below and comment out the input lines to use default database paths
-dnagedcom_db_path = "F:\Alerum68.db"
-rootsmagic_db_path = "F:\Alerum68.rmtree"
+# dnagedcom_db_path = "C:\DNAGedCom.db"
+# rootsmagic_db_path = "C:\RootsMagic.rmtree"
 
-# dnagedcom_db_path = input("Enter the path to the DNAGedcom database: ")
-# rootsmagic_db_path = input("Enter the path to the RootsMagic database: ")
+dnagedcom_db_path = input("Enter the path to the DNAGedcom database: ")
+rootsmagic_db_path = input("Enter the path to the RootsMagic database: ")
 
 # Execute the data transfer
 transfer_dna_data(dnagedcom_db_path, rootsmagic_db_path)
