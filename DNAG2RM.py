@@ -88,7 +88,25 @@ def transfer_dna_data(dnagedcom_db_path, rootsmagic_db_path):
                 existing_record = cursor_rm.fetchone()
 
                 if existing_record:
-                    print(f"Skipping duplicate record in DNATable for OwnerIDs {owner_id1} and {owner_id2}: {matchTestDisplayName}")
+                    # Perform an UPDATE operation instead of skipping
+                    cursor_rm.execute("""
+                        UPDATE DNATable SET
+                            Label1 = ?,
+                            Label2 = ?,
+                            DNAProvider = ?,
+                            SharedCM = ?,
+                            SharedPercent = ?,
+                            LargeSeg = ?,
+                            SharedSegs = ?,
+                            Date = ?,
+                            Note = ?
+                        WHERE ID1 = ? AND ID2 = ?
+                    """, (
+                        matchTreeId, matchTestDisplayName, '2', sharedCentimorgans, sharedPercent, None,
+                        sharedSegment, created_date, note, owner_id1, owner_id2
+                    ))
+                    print(
+                        f"UPDATED record in DNATable for OwnerIDs {owner_id1} and {owner_id2}: {matchTestDisplayName}")
                 else:
                     # Insert or replace data into DNATable
                     cursor_rm.execute("""
@@ -97,12 +115,12 @@ def transfer_dna_data(dnagedcom_db_path, rootsmagic_db_path):
                             SharedSegs, Date, Relate1, Relate2, CommonAnc, CommonAncType, Verified, Note, UTCModDate
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
-                        owner_id1, owner_id2, matchTreeId, matchTestDisplayName, '2', sharedCentimorgans, sharedPercent, None,
+                        owner_id1, owner_id2, matchTreeId, matchTestDisplayName, '2', sharedCentimorgans, sharedPercent,
+                        None,
                         sharedSegment, created_date, None, None, None, None, None, note, None
                     ))
                     print(
-                        f"INSERTED/REPLACED record in DNATable for OwnerIDs {owner_id1} and {owner_id2}: {matchTestDisplayName}"
-                    )
+                        f"INSERTED/REPLACED record in DNATable for OwnerIDs {owner_id1} and {owner_id2}: {matchTestDisplayName}")
 
                 # Check if the OwnerID exists in NameTable
                 cursor_rm.execute("SELECT 1 FROM NameTable WHERE OwnerID = ?", (owner_id2,))
@@ -137,11 +155,10 @@ def transfer_dna_data(dnagedcom_db_path, rootsmagic_db_path):
         conn_rm.close()
 
 # Uncomment the lines below and comment out the input lines to use default database paths
-# dnagedcom_db_path = "C:\\DNAGedCom.db"
-# rootsmagic_db_path = "C:\\RootsMagic.rmtree"
-
-dnagedcom_db_path = input("Enter the path to the DNAGedcom database: ")
-rootsmagic_db_path = input("Enter the path to the RootsMagic database: ")
+dnagedcom_db_path = "C:\DNAGedCom.db"
+rootsmagic_db_path = "C:\RootsMagic.rmtree"
+# dnagedcom_db_path = input("Enter the path to the DNAGedcom database: ")
+#rootsmagic_db_path = input("Enter the path to the RootsMagic database: ")
 
 # Execute the data transfer
 transfer_dna_data(dnagedcom_db_path, rootsmagic_db_path)
