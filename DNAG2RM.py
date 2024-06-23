@@ -1,4 +1,13 @@
 import sqlite3
+import json
+import os
+
+# Function to load ethnicity mappings from JSON file
+def load_ethnicity_mappings():
+    script_dir = os.path.dirname(__file__)  # Assuming the JSON file is in the same directory as this script
+    json_path = os.path.join(script_dir, "ethnicities.json")
+    with open(json_path, 'r') as f:
+        return json.load(f)
 
 def transfer_dna_data(dnagedcom_db_path, rootsmagic_db_path):
     """
@@ -11,6 +20,9 @@ def transfer_dna_data(dnagedcom_db_path, rootsmagic_db_path):
     Returns:
     - None
     """
+
+    # Load ethnicity mappings
+    ethnicity_mappings = load_ethnicity_mappings()
 
     # Custom collation function for case-insensitive sorting
     def rmnocase_collation(x, y):
@@ -71,8 +83,16 @@ def transfer_dna_data(dnagedcom_db_path, rootsmagic_db_path):
 
             if match_result:
                 owner_id2 = str(match_result[0])
-                ethnic_region = ethnicity_dict.get(matchGuid, "Unknown")
-                note = f"{matchTestDisplayName} is {float(confidence):.2f}% of being {groupName}. Ethnic Regions: {ethnic_region}"
+                ethnic_region_codes = ethnicity_dict.get(matchGuid, "").split(',')  # Get list of codes
+
+                # Convert ethnicity codes to ethnicity names
+                ethnic_regions = []
+                for code in ethnic_region_codes:
+                    ethnicity_name = ethnicity_mappings.get(code.strip(), "Unknown")
+                    ethnic_regions.append(ethnicity_name)
+
+                # Create note with updated ethnic regions
+                note = f"{matchTestDisplayName} has a confidence of {float(confidence):.2f}% in being {groupName}. Ethnic Regions: {', '.join(ethnic_regions)}"
 
                 # Calculate SharedPercent rounded to 2 decimal places
                 if sharedCentimorgans:
@@ -105,8 +125,7 @@ def transfer_dna_data(dnagedcom_db_path, rootsmagic_db_path):
                         matchTreeId, matchTestDisplayName, '2', sharedCentimorgans, sharedPercent, None,
                         sharedSegment, created_date, note, owner_id1, owner_id2
                     ))
-                    print(
-                        f"UPDATED record in DNATable for OwnerIDs {owner_id1} and {owner_id2}: {matchTestDisplayName}")
+                    print(f"UPDATED record in DNATable for OwnerIDs {owner_id1} and {owner_id2}: {matchTestDisplayName}")
                 else:
                     # Insert or replace data into DNATable
                     cursor_rm.execute("""
@@ -115,12 +134,10 @@ def transfer_dna_data(dnagedcom_db_path, rootsmagic_db_path):
                             SharedSegs, Date, Relate1, Relate2, CommonAnc, CommonAncType, Verified, Note, UTCModDate
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
-                        owner_id1, owner_id2, matchTreeId, matchTestDisplayName, '2', sharedCentimorgans, sharedPercent,
-                        None,
+                        owner_id1, owner_id2, matchTreeId, matchTestDisplayName, '2', sharedCentimorgans, sharedPercent, None,
                         sharedSegment, created_date, None, None, None, None, None, note, None
                     ))
-                    print(
-                        f"INSERTED/REPLACED record in DNATable for OwnerIDs {owner_id1} and {owner_id2}: {matchTestDisplayName}")
+                    print(f"INSERTED/REPLACED record in DNATable for OwnerIDs {owner_id1} and {owner_id2}: {matchTestDisplayName}")
 
                 # Check if the OwnerID exists in NameTable
                 cursor_rm.execute("SELECT 1 FROM NameTable WHERE OwnerID = ?", (owner_id2,))
@@ -155,10 +172,11 @@ def transfer_dna_data(dnagedcom_db_path, rootsmagic_db_path):
         conn_rm.close()
 
 # Uncomment the lines below and comment out the input lines to use default database paths
-dnagedcom_db_path = "C:\DNAGedCom.db"
-rootsmagic_db_path = "C:\RootsMagic.rmtree"
+dnagedcom_db_path = "F:\Alerum68.db"
+rootsmagic_db_path = "F:\Alerum68.rmtree"
+
 # dnagedcom_db_path = input("Enter the path to the DNAGedcom database: ")
-#rootsmagic_db_path = input("Enter the path to the RootsMagic database: ")
+# rootsmagic_db_path = input("Enter the path to the RootsMagic database: ")
 
 # Execute the data transfer
 transfer_dna_data(dnagedcom_db_path, rootsmagic_db_path)
