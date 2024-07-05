@@ -83,7 +83,9 @@ def gather_data(conn_dg, size=None):
 
     try:
         tables = {
-            'Ancestry': ["Ancestry_ICW", "Ancestry_matchTrees", "Ancestry_matchGroups", "Ancestry_Profiles"]
+            'Ancestry': ["Ancestry_ICW", "Ancestry_matchTrees", "Ancestry_matchGroups", "Ancestry_Profiles"],
+            'FTDNA': ["DNA_Kits", "FTDNA_Matches2", "FTDNA_ICW2", "DGTree"],
+            'MyHeritage': ["DNA_Kits", "MH_Match", "MH_ICW", "MH_Ancestors", "MH_Tree"]
         }
 
         for provider, table_list in tables.items():
@@ -367,7 +369,7 @@ def process_mh(mh_data):
                 'ParentCluster': get_value(row, 'parentCluster')
             }
             mh_match.append(standardized_row)
-        logging.info("MyHeritage Matches data standardized successfully.")
+        logging.info(f"MyHeritage Matches data standardized successfully.{mh_match}")
     except KeyError as e:
         logging.error(f"Error standardizing MyHeritage ancestry_data: Missing key {e}")
     return mh_match
@@ -444,8 +446,8 @@ if __name__ == "__main__":
 
             # Process ancestry_data for each provider
             standardized_ancestry_data = process_ancestry(data['Ancestry'])
-            # standardized_ftdna_data = process_ftdna(ancestry_data['FTDNA'])
-            # standardized_mh_data = process_mh(ancestry_data['MyHeritage'])
+            standardized_ftdna_data = process_ftdna(data['FTDNA'])
+            standardized_mh_data = process_mh(data['MyHeritage'])
 
             # Import standardized ancestry_data into RootsMagic
             # import_rm(rootsmagic_conn, standardized_ancestry_data)
