@@ -45,10 +45,10 @@ def connect_to_db(db_path, db_name=None):
         conn = sqlite3.connect(db_path)
         if db_name == "RootsMagic":
             conn.create_collation("RMNOCASE", lambda x, y: (x.lower() > y.lower()) - (x.lower() < y.lower()))
-        print(f"Connected to {db_name or 'database'} database at: {db_path}")
+        logging.info(f"Connected to {db_name or 'database'} database at: {db_path}")
         return conn
     except sqlite3.Error as e:
-        print(f"Error connecting to {db_name or 'database'} database: {e}")
+        logging.error(f"Error connecting to {db_name or 'database'} database: {e}")
         return None
 
 
@@ -98,7 +98,7 @@ def gather_data(conn_dg, size=None):
                 local_data[provider][table] = [dict(zip(headers, row)) for row in rows]
 
     except sqlite3.Error as e:
-        print(f"Error gathering ancestry_data: {e}")
+        logging.error(f"Error gathering ancestry_data: {e}")
     finally:
         cursor_dg.close()
 
@@ -165,10 +165,10 @@ def gather_data(conn_dg, size=None):
 
 
 def process_ancestry(ancestry_data):
-    standardized_data_icw = []
-    standardized_data_match_trees = []
-    standardized_data_match_groups = []
-    standardized_data_profiles = []
+    Ancestry_icw = []
+    Ancestry_matchTrees = []
+    Ancestry_matchGroups = []
+    Ancestry_profiles = []
 
     def get_value(a_row, key, default=None):
         try:
@@ -177,12 +177,10 @@ def process_ancestry(ancestry_data):
             return default
 
     try:
-        # Data inspection logging
-        logging.info(f"Data inspection - Ancestry_ICW: {ancestry_data.get('Ancestry_ICW', [])[:5]}")
-        logging.info(f"Data inspection - Ancestry_matchTrees: {ancestry_data.get('Ancestry_matchTrees', [])[:5]}")
-        logging.info(f"Data inspection - Ancestry_matchGroups: {ancestry_data.get('Ancestry_matchGroups', [])[:5]}")
-        logging.info(f"Data inspection - Ancestry_Profiles: {ancestry_data.get('Ancestry_Profiles', [])[:5]}")
-
+        logging.info(f"Data Dict: Ancestry_ICW: {ancestry_data.get('Ancestry_ICW', [])[:5]}")
+        logging.info(f"Data Dict: Ancestry_matchTrees: {ancestry_data.get('Ancestry_matchTrees', [])[:5]}")
+        logging.info(f"Data Dict: Ancestry_matchGroups: {ancestry_data.get('Ancestry_matchGroups', [])[:5]}")
+        logging.info(f"Data Dict: Ancestry_Profiles: {ancestry_data.get('Ancestry_Profiles', [])[:5]}")
         # Process Ancestry_ICW ancestry_data
         for row in ancestry_data.get('Ancestry_ICW', []):
             standardized_row = {
@@ -199,9 +197,9 @@ def process_ancestry(ancestry_data):
                 'Confidence': get_value(row, 'confidence'),
                 'Meiosis': get_value(row, 'meiosisValue')
             }
-            standardized_data_icw.append(standardized_row)
+            Ancestry_icw.append(standardized_row)
 
-        logging.info(f"Ancestry ICW ancestry_data standardized successfully: {standardized_data_icw}")
+        logging.info(f"Ancestry ICW data standardized successfully: {Ancestry_icw}")
 
         # Process Ancestry_matchTrees ancestry_data
         for row in ancestry_data.get('Ancestry_matchTrees', []):
@@ -223,9 +221,9 @@ def process_ancestry(ancestry_data):
                 'loginUsername': get_value(row, 'loginUsername'),
                 'sync': get_value(row, 'sync')
             }
-            standardized_data_match_trees.append(standardized_row)
+            Ancestry_matchTrees.append(standardized_row)
 
-        logging.info(f"Ancestry matchTrees ancestry_data standardized successfully: {standardized_data_match_trees}")
+        logging.info(f"Ancestry matchTrees data standardized successfully: {Ancestry_matchTrees}")
 
         # Process Ancestry_matchGroups ancestry_data
         for row in ancestry_data.get('Ancestry_matchGroups', []):
@@ -263,9 +261,9 @@ def process_ancestry(ancestry_data):
                 'MeiosisValue': get_value(row, 'meiosisValue'),
                 'ParentCluster': get_value(row, 'parentCluster')
             }
-            standardized_data_match_groups.append(standardized_row)
+            Ancestry_matchGroups.append(standardized_row)
 
-        logging.info(f"Ancestry matchGroups ancestry_data standardized successfully: {standardized_data_match_groups}")
+        logging.info(f"Ancestry matchGroups data standardized successfully: {Ancestry_matchGroups}")
 
         # Process Ancestry_Profiles ancestry_data
         for row in ancestry_data.get('Ancestry_Profiles', []):
@@ -273,20 +271,20 @@ def process_ancestry(ancestry_data):
                 'guid': get_value(row, 'guid'),
                 'name': get_value(row, 'name')
             }
-            standardized_data_profiles.append(standardized_row)
+            Ancestry_profiles.append(standardized_row)
 
-        logging.info(f"Ancestry Profiles ancestry_data standardized successfully: {standardized_data_profiles}")
+        logging.info(f"Ancestry Profiles data standardized successfully: {Ancestry_profiles}")
 
     except KeyError as e:
         logging.error(f"Error standardizing Ancestry ancestry_data: Missing key {e}")
 
-    return (standardized_data_icw, standardized_data_match_trees,
-            standardized_data_match_groups, standardized_data_profiles)
+    return (Ancestry_icw, Ancestry_matchTrees,
+            Ancestry_matchGroups, Ancestry_profiles)
 
 
 def process_ftdna(ftdna_data):
     # Process and standardize FTDNA ancestry_data
-    standardized_data = []
+    ftdna_matches2 = []
 
     def get_value(f_row, key, default=None):
         try:
@@ -322,16 +320,17 @@ def process_ftdna(ftdna_data):
                 'MeiosisValue': get_value(row, 'meiosisValue'),
                 'ParentCluster': get_value(row, 'parentCluster')
             }
-            standardized_data.append(standardized_row)
-        logging.info("FTDNA ancestry_data standardized successfully.")
+            ftdna_matches2.append(standardized_row)
+        logging.info(f"FTDNA Matches2 data standardized successfully: {ftdna_matches2}")
+
     except KeyError as e:
-        logging.error(f"Error standardizing FTDNA ancestry_data: Missing key {e}")
-    return standardized_data
+        logging.error(f"Error standardizing FTDNA Matches2: Missing key {e}")
+    return ftdna_matches2
 
 
 def process_mh(mh_data):
     # Process and standardize MyHeritage ancestry_data
-    standardized_data = []
+    mh_match = []
 
     def get_value(h_row, key, default=None):
         try:
@@ -367,11 +366,11 @@ def process_mh(mh_data):
                 'MeiosisValue': get_value(row, 'meiosisValue'),
                 'ParentCluster': get_value(row, 'parentCluster')
             }
-            standardized_data.append(standardized_row)
-        logging.info("MyHeritage ancestry_data standardized successfully.")
+            mh_match.append(standardized_row)
+        logging.info("MyHeritage Matches data standardized successfully.")
     except KeyError as e:
         logging.error(f"Error standardizing MyHeritage ancestry_data: Missing key {e}")
-    return standardized_data
+    return mh_match
 
 
 def import_rm(conn_rm, dna_kits):
