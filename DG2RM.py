@@ -7,10 +7,10 @@ from datetime import datetime
 import uuid
 
 # Define global database paths. Switch the comment and uncomment on the lines below to use hard-coded database paths.
-DNAGEDCOM_DB_PATH = input("Enter the path to the DNAGedcom database: ")
-ROOTSMAGIC_DB_PATH = input("Enter the path to the RootsMagic database: ")
-# DNAGEDCOM_DB_PATH = r"F:\DNAGedcom.db"
-# ROOTSMAGIC_DB_PATH = r"F:\RootsMagic.rmtree"
+# DNAGEDCOM_DB_PATH = input("Enter the path to the DNAGedcom database: ")
+# ROOTSMAGIC_DB_PATH = input("Enter the path to the RootsMagic database: ")
+DNAGEDCOM_DB_PATH = r"Alerum68.db"
+ROOTSMAGIC_DB_PATH = r"Alerum68 - Copy.rmtree"
 
 
 def setup_logging():
@@ -175,7 +175,7 @@ def process_ancestry(ancestry_data):
             }
             AncestryAncestorCouple.append(standardized_row)
 
-        logging.info(f"AncestryAncestorCouple table standardized successfully: {AncestryAncestorCouple}")
+        logging.info(f"AncestryAncestorCouple table standardized successfully: {AncestryAncestorCouple[:5]}" )
 
         # Process Ancestry_Ethnicity table
         for row in ancestry_data.get('Ancestry_Ethnicity', []):
@@ -185,7 +185,7 @@ def process_ancestry(ancestry_data):
             }
             Ancestry_Ethnicity.append(standardized_row)
 
-        logging.info(f"Ancestry_Ethnicity table standardized successfully: {Ancestry_Ethnicity}")
+        logging.info(f"Ancestry_Ethnicity table standardized successfully: {Ancestry_Ethnicity[:5]}")
 
         # Process Ancestry_ICW table
         for row in ancestry_data.get('Ancestry_ICW', []):
@@ -207,7 +207,7 @@ def process_ancestry(ancestry_data):
             }
             Ancestry_icw.append(standardized_row)
 
-        logging.info(f"Ancestry_ICW table standardized successfully: {Ancestry_icw}")
+        logging.info(f"Ancestry_ICW table standardized successfully: {Ancestry_icw[:5]}")
 
         # Process Ancestry_matchGroups table
         for row in ancestry_data.get('Ancestry_matchGroups', []):
@@ -249,7 +249,7 @@ def process_ancestry(ancestry_data):
             }
             Ancestry_matchGroups.append(standardized_row)
 
-        logging.info(f"Ancestry_matchGroups table standardized successfully: {Ancestry_matchGroups}")
+        logging.info(f"Ancestry_matchGroups table standardized successfully: {Ancestry_matchGroups[:5]}")
 
         # Process Ancestry_matchEthnicity table
         for row in ancestry_data.get('Ancestry_matchEthnicity', []):
@@ -269,7 +269,7 @@ def process_ancestry(ancestry_data):
             }
             Ancestry_matchEthnicity.append(standardized_row)
 
-        logging.info(f"Ancestry_matchEthnicity table standardized successfully: {Ancestry_matchEthnicity}")
+        logging.info(f"Ancestry_matchEthnicity table standardized successfully: {Ancestry_matchEthnicity[:5]}")
 
         # Process Ancestry_matchTrees table
         for row in ancestry_data.get('Ancestry_matchTrees', []):
@@ -295,7 +295,7 @@ def process_ancestry(ancestry_data):
             }
             Ancestry_matchTrees.append(standardized_row)
 
-        logging.info(f"Ancestry matchTrees table standardized successfully: {Ancestry_matchTrees}")
+        logging.info(f"Ancestry matchTrees table standardized successfully: {Ancestry_matchTrees[:5]}")
 
         # Process Ancestry_Profiles table
         for row in ancestry_data.get('Ancestry_Profiles', []):
@@ -307,7 +307,7 @@ def process_ancestry(ancestry_data):
             }
             Ancestry_profiles.append(standardized_row)
 
-        logging.info(f"Ancestry Profiles table standardized successfully: {Ancestry_profiles}")
+        logging.info(f"Ancestry Profiles table standardized successfully: {Ancestry_profiles[:5]}")
 
         # Process Ancestry_TreeData table
         for row in ancestry_data.get('Ancestry_TreeData', []):
@@ -317,7 +317,7 @@ def process_ancestry(ancestry_data):
             }
             Ancestry_TreeData.append(standardized_row)
 
-        logging.info(f"Ancestry_TreeData table standardized successfully: {Ancestry_TreeData}")
+        logging.info(f"Ancestry_TreeData table standardized successfully: {Ancestry_TreeData[:5]}")
 
     except KeyError as e:
         logging.error(f"Error standardizing Ancestry_data: Missing key {e}")
@@ -373,7 +373,7 @@ def process_ftdna(ftdna_data):
                 'deathdt2': get_value(row, 'deathdt2'),
             }
             DGIndividual.append(standardized_row)
-        logging.info(f"FTDNA DGIndividual table standardized successfully: {DGIndividual}")
+        logging.info(f"FTDNA DGIndividual table standardized successfully: {DGIndividual[:5]}")
 
         # Process FTDNA DGTree table
         for row in ftdna_data.get('DGTree', []):
@@ -389,7 +389,7 @@ def process_ftdna(ftdna_data):
                 'source': get_value(row, 'source'),
             }
             DGTree.append(standardized_row)
-        logging.info(f"FTDNA DGTree table standardized successfully: {DGTree}")
+        logging.info(f"FTDNA DGTree table standardized successfully: {DGTree[:5]}")
 
         # Process FTDNA DNA_Kits table
         for row in ftdna_data.get('DNA_Kits', []):
@@ -404,7 +404,7 @@ def process_ftdna(ftdna_data):
                     'created_date': get_value(row, 'created_date'),
                 }
                 DNA_Kits.append(standardized_row)
-        logging.info(f"FTDNA DNA_Kits table standardized successfully: {DNA_Kits}")
+        logging.info(f"FTDNA DNA_Kits table standardized successfully: {DNA_Kits[:5]}")
 
         # Process FTDNA_Matches2 table
         for row in ftdna_data['FTDNA_Matches2']:
@@ -438,7 +438,7 @@ def process_ftdna(ftdna_data):
                 'ParentCluster': get_value(row, 'parentCluster')
             }
             FTDNA_Matches2.append(standardized_row)
-        logging.info(f"FTDNA Matches2 table standardized successfully: {FTDNA_Matches2}")
+        logging.info(f"FTDNA Matches2 table standardized successfully: {FTDNA_Matches2[:5]}")
     except KeyError as e:
         logging.error(f"Error standardizing FTDNA_data: Missing key {e}")
     return FTDNA_Matches2, DGIndividual, DGTree, DNA_Kits, FTDNA_ICW2, FTDNA_Matches2
@@ -479,7 +479,7 @@ def process_mh(mh_data):
                     'created_date': get_value(row, 'created_date'),
                 }
                 DNA_Kits.append(standardized_row)
-        logging.info(f"MyHeritage DNA_Kits table standardized successfully: {DNA_Kits}")
+        logging.info(f"MyHeritage DNA_Kits table standardized successfully: {DNA_Kits[:5]}")
 
         # Process MH_ICW table
         for row in mh_data['MH_ICW']:
@@ -513,7 +513,7 @@ def process_mh(mh_data):
                 'ParentCluster': get_value(row, 'parentCluster')
             }
             MH_ICW.append(standardized_row)
-        logging.info(f"MyHeritage ICW data standardized successfully.{MH_ICW}")
+        logging.info(f"MyHeritage ICW data standardized successfully.{MH_ICW[:5]}")
 
         # Process MH_Match table
         for row in mh_data['MH_Match']:
@@ -547,7 +547,7 @@ def process_mh(mh_data):
                 'ParentCluster': get_value(row, 'parentCluster')
             }
             MH_Match.append(standardized_row)
-        logging.info(f"MyHeritage Matches data standardized successfully.{MH_Match}")
+        logging.info(f"MyHeritage Matches data standardized successfully.{MH_Match[:5]}")
 
         # Process MH_Tree table
         for row in mh_data['MH_Tree']:
@@ -581,7 +581,7 @@ def process_mh(mh_data):
                 'ParentCluster': get_value(row, 'parentCluster')
             }
             MH_Tree.append(standardized_row)
-        logging.info(f"MyHeritage Tree data standardized successfully.{MH_Tree}")
+        logging.info(f"MyHeritage Tree data standardized successfully.{MH_Tree[:5]}")
     except KeyError as e:
         logging.error(f"Error standardizing MyHeritage_data: Missing key {e}")
     return DNA_Kits, MH_ICW, MH_Match, MH_Tree
