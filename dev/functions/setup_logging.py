@@ -11,7 +11,7 @@ def setup_logging():
         root_logger.setLevel(logging.DEBUG)
 
         # Directory where log files will be stored
-        log_dir = '../../logs'  # Adjust this path as needed
+        log_dir = '../logs'  # Adjust this path as needed
 
         # Create the log directory if it doesn't exist
         if not os.path.exists(log_dir):
