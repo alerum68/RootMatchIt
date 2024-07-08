@@ -1,7 +1,8 @@
-from sqlalchemy import create_engine, Column, Integer, Float, Text, Index, BigInteger, event, String, Boolean, MetaData
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy import Column, Integer, Float, Text, Index, BigInteger
+from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
+
 
 class ChildTable(Base):
     # Define RootsMagic ChildTable
@@ -20,9 +21,10 @@ class ChildTable(Base):
     UTCModDate = Column(Float)
 
     # Define indices for ChildTable
-    idxChildOrder = Index('idxChildOrder', ChildOrder)
-    idxChildID = Index('idxChildID', ChildID)
-    idxChildFamilyID = Index('idxChildFamilyID', FamilyID)
+
+    Index('idxChildOrder', ChildOrder)
+    Index('idxChildID', ChildID)
+    Index('idxChildFamilyID', FamilyID)
 
 
 class DNATable(Base):
@@ -237,3 +239,7 @@ class URLTable(Base):
     URL = Column(Text)
     Note = Column(Text)
     UTCModDate = Column(Float)
+
+    # Define indices for URLTable
+    idxUrlOwnerID = Index('idxUrlOwnerID', OwnerID)
+    idxUrlOwnerType = Index('idxUrlOwnerType', OwnerType)
