@@ -2,7 +2,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from dev.classes.mh_classes import Base, MH_Ancestors, MH_Chromo, MH_ICW, MH_Match, MH_Tree
+from classes.mh_classes import Base, MH_Ancestors, MH_Chromo, MH_ICW, MH_Match, MH_Tree
 
 
 # Set up the SQLite in-memory database for testing
