@@ -50,7 +50,7 @@ for fname in files:
     extract_imports_and_base(file_path)
 
 # Write imports and file contents to DG2RM.py
-with open("../DG2RM.py", "w") as outfile:
+with open("DG2RM.py", "w") as outfile:
     outfile.write("\n".join(sorted(import_lines)) + "\n\n")
 
     # Write contents of each file
@@ -67,3 +67,5 @@ with open("../DG2RM.py", "w") as outfile:
                     break
             outfile.write(
                 "\n" + "".join(lines[start_index:]).strip() + "\n\n")  # Write contents and ensure double newline
+
+print("\n Consolidation complete. Output written to DG2RM.py. Check formating before pushing to git.")
