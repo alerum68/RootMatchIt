@@ -1,8 +1,7 @@
 import logging
 import sqlite3
-
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, declarative_base
 
 # Define global database paths. Switch the comment and uncomment on the lines below to use hard-coded database paths.
 # DNAGEDCOM_DB_PATH = input("Enter the path to the DNAGedcom database: ")
@@ -10,15 +9,17 @@ from sqlalchemy.orm import sessionmaker
 DNAGEDCOM_DB_PATH = r"..\db\Alerum68.db"
 ROOTSMAGIC_DB_PATH = r"..\db\Alerum68 - Copy.rmtree"
 
+Base = declarative_base()
+
 
 def init_db(database_url):
     engine = create_engine(database_url)
+    Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
     return Session
 
 
 def connect_to_db(db_path, db_name=None):
-
     # Connect to databases, and create RMNOCASE collation in RootsMagic.
     try:
         conn = sqlite3.connect(db_path)
@@ -39,8 +40,8 @@ def connect_to_db_sqlalchemy(db_path, db_name=None):
         session = Session()
         logging.info(f"Connected to {db_name or 'database'} database at: {db_path} using SQLAlchemy")
         return session, engine
-    except Exception as sq_e:
-        logging.error(f"Error connecting to {db_name or 'database'} database using SQLAlchemy: {sq_e}")
+    except Exception as sa_e:
+        logging.error(f"Error connecting to {db_name or 'database'} database using SQLAlchemy: {sa_e}")
         return None, None
 
 

@@ -2,8 +2,9 @@
 from setup_logging import setup_logging
 from database import DNAGEDCOM_DB_PATH, ROOTSMAGIC_DB_PATH, connect_to_db
 import logging
+
+
 # remote#
-import logging
 
 def main():
     # Main script execution
