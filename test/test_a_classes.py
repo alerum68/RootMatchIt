@@ -2,7 +2,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from dev.classes.a_classes import Base, Ancestry_ICW, Ancestry_Ethnicity, Ancestry_matchEthnicity, \
+from classes.a_classes import Base, Ancestry_ICW, Ancestry_Ethnicity, Ancestry_matchEthnicity, \
     Ancestry_matchGroups, Ancestry_matchTrees, Ancestry_Profiles, Ancestry_TreeData
 
 
