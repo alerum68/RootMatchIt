@@ -5,16 +5,16 @@ from sqlalchemy.orm import declarative_base
 from database import connect_to_db_sqlalchemy, DNAGEDCOM_DB_PATH
 from setup_logging import setup_logging
 
-Base = declarative_base()
+Kits_Base = declarative_base()
 
 
-class AncestryProfile(Base):
+class AncestryProfile(Kits_Base):
     __tablename__ = 'Ancestry_Profiles'
     guid = Column(String, primary_key=True)
     name = Column(String)
 
 
-class DNAKit(Base):
+class DNAKit(Kits_Base):
     __tablename__ = 'DNA_Kits'
     company = Column(String)
     guid = Column(String, primary_key=True)
