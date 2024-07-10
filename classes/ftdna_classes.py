@@ -131,3 +131,10 @@ class DGIndividual(FTDNA_Base):
         Index('IDX_DGIndividualTM', 'treeid', 'matchid'),
         Index('IDX_DGIndividualSM', 'source', 'matchid'),
     )
+
+
+class DNAKit(FTDNA_Base):
+    __tablename__ = 'DNA_Kits'
+    company = Column(String)
+    guid = Column(String, primary_key=True)
+    name = Column(String)

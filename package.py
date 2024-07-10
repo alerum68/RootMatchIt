@@ -36,12 +36,12 @@ def extract_imports_and_base(filepath):
                 for alias in node.names:
                     import_lines.add(f"from {module_name} import {alias.name}")
             elif isinstance(node, ast.Assign):
-                if any(isinstance(target, ast.Name) and target.id == "Base" for target in node.targets):
+                if any(isinstance(target, ast.Name) and target.id == "Ancestry_Base" for target in node.targets):
                     if isinstance(node.value, ast.Call):
                         if isinstance(node.value.func, ast.Attribute) and node.value.func.attr == "declarative_base":
                             if isinstance(node.value.func.value,
                                           ast.Name) and node.value.func.value.id == "sqlalchemy" and not imported_base:
-                                import_lines.add("from sqlalchemy.ext.declarative import declarative_base as Base")
+                                import_lines.add("from sqlalchemy.ext.declarative import declarative_base as Ancestry_Base")
                                 imported_base = True
 
 
