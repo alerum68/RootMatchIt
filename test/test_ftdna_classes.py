@@ -28,7 +28,7 @@ def session(engine, tables):
 
 
 def test_class_definitions():
-    # Check if classes are defined and part of Base metadata
+    # Check if classes are defined and part of Ancestry_Base metadata
     assert 'DGTree' in Base.metadata.tables
     assert 'FTDNA_Chromo2' in Base.metadata.tables
     assert 'FTDNA_ICW2' in Base.metadata.tables

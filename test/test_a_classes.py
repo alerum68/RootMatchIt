@@ -2,7 +2,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from classes.a_classes import Base, Ancestry_ICW, Ancestry_Ethnicity, Ancestry_matchEthnicity, \
+from classes.a_classes import Ancestry_Base, Ancestry_ICW, Ancestry_Ethnicity, Ancestry_matchEthnicity, \
     Ancestry_matchGroups, Ancestry_matchTrees, Ancestry_Profiles, Ancestry_TreeData
 
 
@@ -15,10 +15,10 @@ def engine():
 @pytest.fixture(scope='module')
 def tables(engine):
     # Create tables in the in-memory database
-    Base.metadata.create_all(engine)
+    Ancestry_Base.metadata.create_all(engine)
     yield
     # Drop tables after the test
-    Base.metadata.drop_all(engine)
+    Ancestry_Base.metadata.drop_all(engine)
 
 
 @pytest.fixture(scope='module')
@@ -30,14 +30,14 @@ def session(engine, tables):
 
 
 def test_class_definitions():
-    # Check if classes are defined and part of Base metadata
-    assert 'Ancestry_ICW' in Base.metadata.tables
-    assert 'Ancestry_Ethnicity' in Base.metadata.tables
-    assert 'Ancestry_matchEthnicity' in Base.metadata.tables
-    assert 'Ancestry_matchGroups' in Base.metadata.tables
-    assert 'Ancestry_matchTrees' in Base.metadata.tables
-    assert 'Ancestry_Profiles' in Base.metadata.tables
-    assert 'Ancestry_TreeData' in Base.metadata.tables
+    # Check if classes are defined and part of Ancestry_Base metadata
+    assert 'Ancestry_ICW' in Ancestry_Base.metadata.tables
+    assert 'Ancestry_Ethnicity' in Ancestry_Base.metadata.tables
+    assert 'Ancestry_matchEthnicity' in Ancestry_Base.metadata.tables
+    assert 'Ancestry_matchGroups' in Ancestry_Base.metadata.tables
+    assert 'Ancestry_matchTrees' in Ancestry_Base.metadata.tables
+    assert 'Ancestry_Profiles' in Ancestry_Base.metadata.tables
+    assert 'Ancestry_TreeData' in Ancestry_Base.metadata.tables
 
 
 def test_ancestry_icw_columns(session):

@@ -1,10 +1,10 @@
 from sqlalchemy import Column, Integer, Float, Index, BigInteger, String, UniqueConstraint, ForeignKeyConstraint
 from sqlalchemy.orm import declarative_base
 
-Base = declarative_base()
+Ancestry_Base = declarative_base()
 
 
-class Ancestry_ICW(Base):
+class Ancestry_ICW(Ancestry_Base):
     __tablename__ = 'Ancestry_ICW'
 
     Id = Column(Integer, primary_key=True, autoincrement=True)
@@ -26,14 +26,14 @@ class Ancestry_ICW(Base):
     )
 
 
-class Ancestry_Ethnicity(Base):
+class Ancestry_Ethnicity(Ancestry_Base):
     __tablename__ = 'Ancestry_Ethnicity'
 
     code = Column(String, primary_key=True, nullable=False)
     value = Column(String)
 
 
-class Ancestry_matchEthnicity(Base):
+class Ancestry_matchEthnicity(Ancestry_Base):
     __tablename__ = 'Ancestry_matchEthnicity'
 
     Id = Column(Integer, primary_key=True, autoincrement=True)
@@ -49,7 +49,7 @@ class Ancestry_matchEthnicity(Base):
     )
 
 
-class Ancestry_matchGroups(Base):
+class Ancestry_matchGroups(Ancestry_Base):
     __tablename__ = 'Ancestry_matchGroups'
 
     Id = Column(Integer, primary_key=True, autoincrement=True)
@@ -98,7 +98,7 @@ class Ancestry_matchGroups(Base):
     )
 
 
-class Ancestry_matchTrees(Base):
+class Ancestry_matchTrees(Ancestry_Base):
     __tablename__ = 'Ancestry_matchTrees'
 
     Id = Column(Integer, primary_key=True, autoincrement=True)
@@ -127,7 +127,7 @@ class Ancestry_matchTrees(Base):
     )
 
 
-class Ancestry_Profiles(Base):
+class Ancestry_Profiles(Ancestry_Base):
     __tablename__ = 'Ancestry_Profiles'
 
     Id = Column(Integer, primary_key=True, autoincrement=True)
@@ -135,7 +135,7 @@ class Ancestry_Profiles(Base):
     name = Column(String)
 
 
-class Ancestry_TreeData(Base):
+class Ancestry_TreeData(Ancestry_Base):
     __tablename__ = 'Ancestry_TreeData'
     __table_args__ = (
         ForeignKeyConstraint(['matchGuid'], ['Ancestry_matchGroups.matchGuid']),

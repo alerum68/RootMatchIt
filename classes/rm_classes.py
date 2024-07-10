@@ -1,10 +1,10 @@
 from sqlalchemy import Column, Integer, Float, Text, Index, BigInteger
 from sqlalchemy.orm import declarative_base
 
-Base = declarative_base()
+RM_Base = declarative_base()
 
 
-class ChildTable(Base):
+class ChildTable(RM_Base):
     # Define RootsMagic ChildTable
     __tablename__ = 'ChildTable'
 
@@ -27,7 +27,7 @@ class ChildTable(Base):
     Index('idxChildFamilyID', FamilyID)
 
 
-class DNATable(Base):
+class DNATable(RM_Base):
     # Define RootsMagic DNATable
     __tablename__ = 'DNATable'
 
@@ -55,7 +55,7 @@ class DNATable(Base):
     idxDnaId1 = Index('idxDnaId1', ID1)
 
 
-class EventTable(Base):
+class EventTable(RM_Base):
     # Define RootsMagic EventTable
     __tablename__ = 'EventTable'
     EventID = Column(Integer, primary_key=True)
@@ -81,7 +81,7 @@ class EventTable(Base):
     idxOwnerDate = Index('idxOwnerDate', OwnerID, SortDate)
 
 
-class FactTypeTable(Base):
+class FactTypeTable(RM_Base):
     # Define RootsMagic FactTypeTable
     __tablename__ = 'FactTypeTable'
     FactTypeID = Column(Integer, primary_key=True)
@@ -102,7 +102,7 @@ class FactTypeTable(Base):
     idxFactTypeGedcomTag = Index('idxFactTypeGedcomTag', GedcomTag)
 
 
-class FamilyTable(Base):
+class FamilyTable(RM_Base):
     # Define RootsMagic FamilyTable
     __tablename__ = 'FamilyTable'
     FamilyID = Column(Integer, primary_key=True)
@@ -127,7 +127,7 @@ class FamilyTable(Base):
     idxFamilyFatherID = Index('idxFamilyFatherID', FatherID)
 
 
-class GroupTable(Base):
+class GroupTable(RM_Base):
     # Define RootsMagic GroupTable
     __tablename__ = 'GroupTable'
     RecID = Column(Integer, primary_key=True)
@@ -137,7 +137,7 @@ class GroupTable(Base):
     UTCModDate = Column(Float)
 
 
-class NameTable(Base):
+class NameTable(RM_Base):
     # Define RootsMagic NameTable
     __tablename__ = 'NameTable'
     NameID = Column(Integer, primary_key=True)
@@ -175,7 +175,7 @@ class NameTable(Base):
     idxSurnameMP = Index('idxSurnameMP', SurnameMP)
 
 
-class PersonTable(Base):
+class PersonTable(RM_Base):
     # Define RootsMagic PersonTable
     __tablename__ = 'PersonTable'
     PersonID = Column(Integer, primary_key=True)
@@ -204,7 +204,7 @@ class PersonTable(Base):
     UTCModDate = Column(Float)
 
 
-class PlaceTable(Base):
+class PlaceTable(RM_Base):
     # Define RootsMagic PlaceTable
     __tablename__ = 'PlaceTable'
     PlaceID = Column(Integer, primary_key=True)
@@ -228,7 +228,7 @@ class PlaceTable(Base):
     idxReversePlaceName = Index('idxReversePlaceName', Reverse)
 
 
-class URLTable(Base):
+class URLTable(RM_Base):
     # Define RootsMagic URLTable
     __tablename__ = 'URLTable'
     LinkID = Column(Integer, primary_key=True)

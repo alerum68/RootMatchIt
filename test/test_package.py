@@ -49,13 +49,13 @@ def test_extract_imports_and_base(setup_files_fixture):
         "import ast",
         "import os",
         "import astor",
-        "from sqlalchemy.ext.declarative import declarative_base as Base"
+        "from sqlalchemy.ext.declarative import declarative_base as Ancestry_Base"
         # Add expected imports based on your script logic
     }
 
     assert import_lines == expected_imports, "Extracted imports do not match expected"
 
     # Check if base assignment was imported
-    assert imported_base, "Base assignment from SQLAlchemy was not imported"
+    assert imported_base, "Ancestry_Base assignment from SQLAlchemy was not imported"
 
 # You can add more tests as needed

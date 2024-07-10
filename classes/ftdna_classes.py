@@ -1,10 +1,10 @@
 from sqlalchemy import Column, Integer, Float, Index, BigInteger, String
 from sqlalchemy.orm import declarative_base
 
-Base = declarative_base()
+FTDNA_Base = declarative_base()
 
 
-class DGTree(Base):
+class DGTree(FTDNA_Base):
     __tablename__ = 'DGTree'
     Id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String)
@@ -21,7 +21,7 @@ class DGTree(Base):
     )
 
 
-class FTDNA_Chromo2(Base):
+class FTDNA_Chromo2(FTDNA_Base):
     __tablename__ = 'FTDNA_Chromo2'
     Id = Column(Integer, primary_key=True, autoincrement=True)
     eKit1 = Column(String)
@@ -40,7 +40,7 @@ class FTDNA_Chromo2(Base):
     )
 
 
-class FTDNA_ICW2(Base):
+class FTDNA_ICW2(FTDNA_Base):
     __tablename__ = 'FTDNA_ICW2'
     Id = Column(Integer, primary_key=True, autoincrement=True)
     eKitKit = Column(String)
@@ -58,7 +58,7 @@ class FTDNA_ICW2(Base):
     )
 
 
-class FTDNA_Matches2(Base):
+class FTDNA_Matches2(FTDNA_Base):
     __tablename__ = 'FTDNA_Matches2'
     Id = Column(Integer, primary_key=True, autoincrement=True)
     eKit1 = Column(String)
@@ -104,7 +104,7 @@ class FTDNA_Matches2(Base):
     GF_Sync = Column(String)
 
 
-class DGIndividual(Base):
+class DGIndividual(FTDNA_Base):
     __tablename__ = 'DGIndividual'
     Id = Column(Integer, primary_key=True, autoincrement=True)
     treeid = Column(Integer)

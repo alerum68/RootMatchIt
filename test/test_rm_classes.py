@@ -30,7 +30,7 @@ def session(engine, tables):
 
 
 def test_class_definitions():
-    # Check if classes are defined and part of Base metadata
+    # Check if classes are defined and part of Ancestry_Base metadata
     assert 'ChildTable' in Base.metadata.tables
     assert 'DNATable' in Base.metadata.tables
     assert 'EventTable' in Base.metadata.tables

@@ -1,10 +1,10 @@
 from sqlalchemy import Column, Integer, Float, Index, String, UniqueConstraint
 from sqlalchemy.orm import declarative_base
 
-Base = declarative_base()
+MH_Base = declarative_base()
 
 
-class MH_Ancestors(Base):
+class MH_Ancestors(MH_Base):
     __tablename__ = 'MH_Ancestors'
     Id = Column(Integer, primary_key=True, autoincrement=True)
     TreeId = Column(Integer)
@@ -27,7 +27,7 @@ class MH_Ancestors(Base):
     )
 
 
-class MH_Chromo(Base):
+class MH_Chromo(MH_Base):
     __tablename__ = 'MH_Chromo'
 
     Id = Column(Integer, primary_key=True, autoincrement=True)
@@ -48,7 +48,7 @@ class MH_Chromo(Base):
     )
 
 
-class MH_ICW(Base):
+class MH_ICW(MH_Base):
     __tablename__ = 'MH_ICW'
 
     Id = Column(Integer, primary_key=True, autoincrement=True)
@@ -67,7 +67,7 @@ class MH_ICW(Base):
     )
 
 
-class MH_Match(Base):
+class MH_Match(MH_Base):
     __tablename__ = 'MH_Match'
 
     Id = Column(Integer, primary_key=True, autoincrement=True)
@@ -114,7 +114,7 @@ class MH_Match(Base):
     )
 
 
-class MH_Tree(Base):
+class MH_Tree(MH_Base):
     __tablename__ = 'MH_Tree'
 
     Id = Column(Integer, primary_key=True, autoincrement=True)

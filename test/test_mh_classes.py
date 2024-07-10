@@ -2,7 +2,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from classes.mh_classes import Base, MH_Ancestors, MH_Chromo, MH_ICW, MH_Match, MH_Tree
+from classes.mh_classes import MH_Base, MH_Ancestors, MH_Chromo, MH_ICW, MH_Match, MH_Tree
 
 
 # Set up the SQLite in-memory database for testing
@@ -14,10 +14,10 @@ def engine():
 @pytest.fixture(scope='module')
 def tables(engine):
     # Create tables in the in-memory database
-    Base.metadata.create_all(engine)
+    MH_Base.metadata.create_all(engine)
     yield
     # Drop tables after the test
-    Base.metadata.drop_all(engine)
+    MH_Base.metadata.drop_all(engine)
 
 
 @pytest.fixture(scope='module')
@@ -29,12 +29,12 @@ def session(engine, tables):
 
 
 def test_class_definitions():
-    # Check if classes are defined and part of Base metadata
-    assert 'MH_Ancestors' in Base.metadata.tables
-    assert 'MH_Chromo' in Base.metadata.tables
-    assert 'MH_ICW' in Base.metadata.tables
-    assert 'MH_Match' in Base.metadata.tables
-    assert 'MH_Tree' in Base.metadata.tables
+    # Check if classes are defined and part of Ancestry_Base metadata
+    assert 'MH_Ancestors' in MH_Base.metadata.tables
+    assert 'MH_Chromo' in MH_Base.metadata.tables
+    assert 'MH_ICW' in MH_Base.metadata.tables
+    assert 'MH_Match' in MH_Base.metadata.tables
+    assert 'MH_Tree' in MH_Base.metadata.tables
 
 
 def test_mh_ancestors_columns(session):
