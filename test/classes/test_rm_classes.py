@@ -2,7 +2,8 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from dev.classes.rm_classes import Base, ChildTable, DNATable, EventTable, FactTypeTable, FamilyTable, GroupTable, NameTable, \
+from classes.rm_classes import RM_Base, ChildTable, DNATable, EventTable, FactTypeTable, FamilyTable, GroupTable, \
+    NameTable, \
     PersonTable, PlaceTable, URLTable
 
 
@@ -15,10 +16,10 @@ def engine():
 @pytest.fixture(scope='module')
 def tables(engine):
     # Create tables in the in-memory database
-    Base.metadata.create_all(engine)
+    RM_Base.metadata.create_all(engine)
     yield
     # Drop tables after the test
-    Base.metadata.drop_all(engine)
+    RM_Base.metadata.drop_all(engine)
 
 
 @pytest.fixture(scope='module')
@@ -31,16 +32,16 @@ def session(engine, tables):
 
 def test_class_definitions():
     # Check if classes are defined and part of Ancestry_Base metadata
-    assert 'ChildTable' in Base.metadata.tables
-    assert 'DNATable' in Base.metadata.tables
-    assert 'EventTable' in Base.metadata.tables
-    assert 'FactTypeTable' in Base.metadata.tables
-    assert 'FamilyTable' in Base.metadata.tables
-    assert 'GroupTable' in Base.metadata.tables
-    assert 'NameTable' in Base.metadata.tables
-    assert 'PersonTable' in Base.metadata.tables
-    assert 'PlaceTable' in Base.metadata.tables
-    assert 'URLTable' in Base.metadata.tables
+    assert 'ChildTable' in RM_Base.metadata.tables
+    assert 'DNATable' in RM_Base.metadata.tables
+    assert 'EventTable' in RM_Base.metadata.tables
+    assert 'FactTypeTable' in RM_Base.metadata.tables
+    assert 'FamilyTable' in RM_Base.metadata.tables
+    assert 'GroupTable' in RM_Base.metadata.tables
+    assert 'NameTable' in RM_Base.metadata.tables
+    assert 'PersonTable' in RM_Base.metadata.tables
+    assert 'PlaceTable' in RM_Base.metadata.tables
+    assert 'URLTable' in RM_Base.metadata.tables
 
 
 def test_childtable_columns(session):

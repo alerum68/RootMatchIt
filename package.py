@@ -41,7 +41,8 @@ def extract_imports_and_base(filepath):
                         if isinstance(node.value.func, ast.Attribute) and node.value.func.attr == "declarative_base":
                             if isinstance(node.value.func.value,
                                           ast.Name) and node.value.func.value.id == "sqlalchemy" and not imported_base:
-                                import_lines.add("from sqlalchemy.ext.declarative import declarative_base as Ancestry_Base")
+                                import_lines.add("from sqlalchemy.ext.declarative import declarative_base as "
+                                                 "Ancestry_Base")
                                 imported_base = True
 
 

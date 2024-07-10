@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import sessionmaker
-from dev.classes.ftdna_classes import Base, DGTree, FTDNA_Chromo2, FTDNA_ICW2, FTDNA_Matches2, DGIndividual
+from classes.ftdna_classes import FTDNA_Base, DGTree, FTDNA_Chromo2, FTDNA_ICW2, FTDNA_Matches2, DGIndividual
 
 
 # Set up the SQLite in-memory database for testing
@@ -13,10 +13,10 @@ def engine():
 @pytest.fixture(scope='module')
 def tables(engine):
     # Create tables in the in-memory database
-    Base.metadata.create_all(engine)
+    FTDNA_Base.metadata.create_all(engine)
     yield
     # Drop tables after the test
-    Base.metadata.drop_all(engine)
+    FTDNA_Base.metadata.drop_all(engine)
 
 
 @pytest.fixture(scope='module')
@@ -29,11 +29,11 @@ def session(engine, tables):
 
 def test_class_definitions():
     # Check if classes are defined and part of Ancestry_Base metadata
-    assert 'DGTree' in Base.metadata.tables
-    assert 'FTDNA_Chromo2' in Base.metadata.tables
-    assert 'FTDNA_ICW2' in Base.metadata.tables
-    assert 'FTDNA_Matches2' in Base.metadata.tables
-    assert 'DGIndividual' in Base.metadata.tables
+    assert 'DGTree' in FTDNA_Base.metadata.tables
+    assert 'FTDNA_Chromo2' in FTDNA_Base.metadata.tables
+    assert 'FTDNA_ICW2' in FTDNA_Base.metadata.tables
+    assert 'FTDNA_Matches2' in FTDNA_Base.metadata.tables
+    assert 'DGIndividual' in FTDNA_Base.metadata.tables
 
 
 def test_table_creation(engine, tables):
