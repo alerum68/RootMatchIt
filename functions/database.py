@@ -1,5 +1,7 @@
+# database.py
 # Local Imports
 from setup_logging import setup_logging
+
 # Remote Imports
 import os
 import logging
@@ -7,11 +9,11 @@ import sqlite3
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-
 Base = declarative_base()
 
 
 def init_db(database_url):
+    # Initialize the database by creating tables based on the given database URL.
     engine = create_engine(database_url)
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
@@ -21,7 +23,8 @@ def init_db(database_url):
 
 
 def find_database_paths():
-    db_directory = "./db"
+    # Find the paths to the DNAGedcom and RootsMagic databases either from a directory or user input.
+    db_directory = ".\\db"
     dg_db_file = None
     rm_db_file = None
 
@@ -36,8 +39,8 @@ def find_database_paths():
     if not dg_db_file or not rm_db_file:
         # If no databases found in directory, fall back to manual input
         print("No database files found in ./db directory.")
-        dg_db_path = input("Enter the path to the DNAGedcom database: ")
-        rm_db_path = input("Enter the path to the RootsMagic database: ")
+        dg_db_path = input("Enter the path to the DNAGedcom database: ").strip()
+        rm_db_path = input("Enter the path to the RootsMagic database: ").strip()
     else:
         dg_db_path = dg_db_file
         rm_db_path = rm_db_file
@@ -46,7 +49,7 @@ def find_database_paths():
 
 
 def connect_to_db(db_path, db_name=None):
-    # Connect to databases, and create RMNOCASE collation in RootsMagic.
+    # Connect to a SQLite database using sqlite3.
     try:
         conn = sqlite3.connect(db_path)
         if db_name == "RootsMagic":
@@ -59,6 +62,7 @@ def connect_to_db(db_path, db_name=None):
 
 
 def connect_to_db_sqlalchemy(dg_db_path, rm_db_path):
+    # Connect to DNAGedcom and RootsMagic databases using SQLAlchemy.
     try:
         # Connect to DNAGedcom database
         dg_engine = create_engine(f"sqlite:///{dg_db_path}")
@@ -73,24 +77,54 @@ def connect_to_db_sqlalchemy(dg_db_path, rm_db_path):
         logging.info(f"Connected to DNAGedcom database at: {dg_db_path} using SQLAlchemy")
         logging.info(f"Connected to RootsMagic database at: {rm_db_path} using SQLAlchemy")
 
-        return dg_session, rm_session
+        return dg_session, dg_engine, rm_session, rm_engine
+
     except Exception as sa_e:
         logging.error(f"Error connecting to databases using SQLAlchemy: {sa_e}")
-        return None, None
+        return None, None, None, None
 
 
 def main():
+    # Main function to run the script.
     setup_logging()
 
-    # Find database paths
-    DNAGEDCOM_DB_PATH, ROOTSMAGIC_DB_PATH = find_database_paths()
+    dnagedcom_conn = None
+    rootsmagic_conn = None
+    dnagedcom_session = None
+    dnagedcom_engine = None
+    rootsmagic_session = None
+    rootsmagic_engine = None
 
-    # Connect using sqlite3
-    dnagedcom_conn = connect_to_db(DNAGEDCOM_DB_PATH, db_name="DNAGedcom")
-    rootsmagic_conn = connect_to_db(ROOTSMAGIC_DB_PATH, db_name="RootsMagic")
+    try:
+        DNAGEDCOM_DB_PATH, ROOTSMAGIC_DB_PATH = find_database_paths()
 
-    # Connect using SQLAlchemy
-    dnagedcom_session, dnagedcom_engine = connect_to_db_sqlalchemy(DNAGEDCOM_DB_PATH, ROOTSMAGIC_DB_PATH)
+        # Connect using sqlite3
+        dnagedcom_conn = connect_to_db(DNAGEDCOM_DB_PATH, db_name="DNAGedcom")
+        rootsmagic_conn = connect_to_db(ROOTSMAGIC_DB_PATH, db_name="RootsMagic")
+
+        # Connect using SQLAlchemy
+        dnagedcom_session, dnagedcom_engine, rootsmagic_session, rootsmagic_engine = connect_to_db_sqlalchemy(
+            DNAGEDCOM_DB_PATH, ROOTSMAGIC_DB_PATH)
+
+    except Exception as e:
+        logging.critical(f"Critical error in database connections: {e}")
+
+    finally:
+        if dnagedcom_conn:
+            dnagedcom_conn.close()
+        if rootsmagic_conn:
+            rootsmagic_conn.close()
+
+        if dnagedcom_session:
+            dnagedcom_session.close()
+        if dnagedcom_engine:
+            dnagedcom_engine.dispose()
+        if rootsmagic_session:
+            rootsmagic_session.close()
+        if rootsmagic_engine:
+            rootsmagic_engine.dispose()
+
+    logging.info("Closed connection to RootsMagic and DNAGedcom databases.")
 
 
 if __name__ == "__main__":

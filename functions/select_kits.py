@@ -1,8 +1,9 @@
+# select_kits.py
 import logging
 import re
-from sqlalchemy import Column, String
-from sqlalchemy.orm import declarative_base
-from database import connect_to_db_sqlalchemy, DNAGEDCOM_DB_PATH
+from sqlalchemy import create_engine, Column, String
+from sqlalchemy.orm import sessionmaker, declarative_base
+from database import find_database_paths
 from setup_logging import setup_logging
 
 Kits_Base = declarative_base()
@@ -92,13 +93,19 @@ def prompt_user_for_kits(dna_kits):
                 company_id = company_map.get(idx.lower())
                 if company_id:
                     selected_kits.extend([kit for kit in dna_kits if kit[0] == company_id])
-
+    print(f"Selected Kits:{selected_kits}")
     return selected_kits
 
 
 def main():
+    setup_logging()
     logging.info("Connecting to database...")
-    session, _ = connect_to_db_sqlalchemy(DNAGEDCOM_DB_PATH)
+    DNAGEDCOM_DB_PATH, ROOTSMAGIC_DB_PATH = find_database_paths()
+
+    # Create engine and session
+    engine = create_engine(f'sqlite:///{DNAGEDCOM_DB_PATH}', echo=False)
+    Session = sessionmaker(bind=engine)
+    session = Session()
 
     logging.info("Fetching user kit data...")
     dna_kits = user_kit_data(session)
@@ -113,7 +120,9 @@ def main():
     else:
         logging.warning("No kits found.")
 
+    # Close session
+    session.close()
+
 
 if __name__ == "__main__":
-    setup_logging()
     main()
