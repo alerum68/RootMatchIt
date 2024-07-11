@@ -16,6 +16,18 @@ import uuid
 ancestry_base = Ancestry_Base()
 ftdna_base = FTDNA_Base()
 mh_base = MH_Base()
+rm_base = RM_Base()
+
+
+def generate_unique_id(*args) -> str:
+    # Filter out empty or None values from the arguments
+    filtered_args = [str(arg) for arg in args if arg]
+    if not filtered_args:
+        return str(uuid.uuid4())  # Return a random UUID if all args are empty
+    unique_str = ' '.join(filtered_args)  # Combine all arguments into a single string
+    namespace = uuid.NAMESPACE_DNS  # Use a predefined namespace, or create your own using uuid.uuid4()
+    unique_id = str(uuid.uuid5(namespace, unique_str))
+    return unique_id
 
 
 def check_for_duplicates(session: Session, unique_id: str, **kwargs):
@@ -43,14 +55,30 @@ def check_for_duplicates(session: Session, unique_id: str, **kwargs):
 def filter_selected_kits(filter_session: Session, f_selected_kits):
     logger = logging.getLogger('filter_selected_kits')
     logger.info("Filtering selected kits...")
+
     selected_guids = [kit[1] for kit in f_selected_kits]  # Extracting GUIDs from selected kits
     test_ids = {}
 
     try:
-        # Example for AncestryMatchGroups table
+        # Example for Ancestry_matchGroups table
         ancestry_matches = filter_session.query(Ancestry_matchGroups).filter(
             Ancestry_matchGroups.testGuid.in_(selected_guids)).all()
         test_ids['Ancestry_matchGroups'] = [match.Id for match in ancestry_matches]
+
+        logger.info("Processing Ancestry_matchTrees with selected GUIDs: %s", selected_guids)
+
+        # Step 1: Retrieve matchGuids from Ancestry_matchGroups
+        match_guids = [group.matchGuid for group in ancestry_matches]
+        logger.info("Found matchGuids in Ancestry_matchGroups: %s", match_guids)
+
+        # Step 2: Filter Ancestry_matchTrees based on matchGuids (previously matchid)
+        ancestry_matches_trees = filter_session.query(Ancestry_matchTrees).filter(
+            Ancestry_matchTrees.matchid.in_(match_guids)).all()
+
+        matched_ids = [match.Id for match in ancestry_matches_trees]
+        logger.info("Matched IDs found in Ancestry_matchTrees: %s", matched_ids)
+
+        test_ids['Ancestry_matchTrees'] = matched_ids
 
         # Example for FTDNA_Matches2 table
         ftdna_matches = filter_session.query(FTDNA_Matches2).filter(
@@ -58,13 +86,20 @@ def filter_selected_kits(filter_session: Session, f_selected_kits):
         test_ids['FTDNA_Matches2'] = [match.Id for match in ftdna_matches]
 
         # Example for MH_Match table
-        mh_matches = filter_session.query(MH_Match).filter(MH_Match.guid.in_(selected_guids)).all()
+        mh_matches = filter_session.query(MH_Match).filter(
+            MH_Match.guid.in_(selected_guids)).all()
         test_ids['MH_Match'] = [match.Id for match in mh_matches]
 
         # Extend for other tables as needed
 
+        if not any(test_ids.values()):
+            test_ids = {}  # Clear the dictionary if no matches are found
+
         if test_ids:
             logger.info(f"Test IDs found: {test_ids}")
+        else:
+            logger.info("No test IDs found.")
+
     except Exception as filter_e:
         logger.error(f"Error filtering selected kits: {filter_e}")
 
@@ -72,63 +107,57 @@ def filter_selected_kits(filter_session: Session, f_selected_kits):
 
 
 def insert_person(person_dg_session: Session, person_rm_session: Session, person_filtered_ids):
-
     try:
         # Ancestry
+        # Import Ancestry_matchGroups into PersonTable.
         if person_filtered_ids.get('Ancestry_matchGroups'):
-            ancestry_individuals = person_dg_session.query(Ancestry_matchGroups.testGuid,
-                                                           Ancestry_matchGroups.subjectGender,
-                                                           Ancestry_matchGroups.matchGuid).filter(
+            ancestry_individuals_groups = person_dg_session.query(
+                Ancestry_matchGroups.testGuid,
+                Ancestry_matchGroups.subjectGender,
+                Ancestry_matchGroups.matchGuid
+            ).filter(
                 Ancestry_matchGroups.Id.in_(person_filtered_ids['Ancestry_matchGroups'])
             ).all()
 
-            for individual in ancestry_individuals:
+            for individual in ancestry_individuals_groups:
                 sex_value = 1 if individual.subjectGender == 'F' else 0 if individual.subjectGender == 'M' else 2
                 check_for_duplicates(person_rm_session,
                                      individual.matchGuid,
                                      Sex=sex_value,
                                      Color=25,
                                      )
-            logging.info(f"Processed {len(ancestry_individuals)} Ancestry individuals.")
+            logging.info(f"Processed {len(ancestry_individuals_groups)} Ancestry individuals from matchGroups.")
         else:
-            logging.info(f"Skipping Ancestry processing due to empty filtered IDs.")
+            logging.info(f"Skipping Ancestry matchGroups processing due to empty filtered IDs.")
 
-        # FTDNA
-        if person_filtered_ids.get('FTDNA_Matches2'):
-            ftdna_individuals = person_dg_session.query(FTDNA_Matches2.Female,
-                                                        FTDNA_Matches2.Name, FTDNA_Matches2.eKit2).filter(
-                FTDNA_Matches2.Id.in_(person_filtered_ids['FTDNA_Matches2'])
+        # Process Ancestry_matchTrees
+        if person_filtered_ids.get('Ancestry_matchTrees'):
+            ancestry_individuals_trees = person_dg_session.query(
+                Ancestry_matchTrees.matchid,
+                Ancestry_matchTrees.given,
+                Ancestry_matchTrees.surname,
+                Ancestry_matchTrees.birthdate
+            ).filter(
+                Ancestry_matchTrees.Id.in_(person_filtered_ids['Ancestry_matchTrees'])
             ).all()
 
-            for individual in ftdna_individuals:
-                unique_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, individual.Name))
-                sex_value = 1 if individual.Female == 'true' else 0 if individual.Female == 'false' else 2
-                check_for_duplicates(person_rm_session,
-                                     unique_id,
-                                     Sex=sex_value,
-                                     Color=3,
-                                     )
-            logging.info(f"Processed {len(ftdna_individuals)} FTDNA individuals.")
+            for individual in ancestry_individuals_trees:
+                try:
+                    unique_id = generate_unique_id(individual.given, individual.surname, individual.birthdate)
+                    check_for_duplicates(person_rm_session,
+                                         unique_id,
+                                         Sex=3,  # Adjust as per your data
+                                         Color=30,  # Adjust as per your data
+                                         )
+                except Exception as ap_e:
+                    logging.error(f"Error generating unique ID for individual: {ap_e}")
+                    continue
+
+            logging.info(f"Processed {len(ancestry_individuals_trees)} Ancestry individuals from matchTrees.")
         else:
-            logging.info("Skipping FTDNA processing due to empty filtered IDs.")
+            logging.info(f"Skipping Ancestry matchTrees processing due to empty filtered IDs.")
 
-        # MyHeritage
-        if person_filtered_ids.get('MH_Match'):
-            mh_individuals = person_dg_session.query(MH_Match.testid, MH_Match.gender).filter(
-                MH_Match.Id.in_(person_filtered_ids['MH_Match'])
-            ).all()
-
-            for individual in mh_individuals:
-                sex_value = 1 if individual.gender == 'F' else 0 if individual.gender == 'M' else 2
-                check_for_duplicates(person_rm_session,
-                                     individual.testid,
-                                     Sex=sex_value,
-                                     Color=17,
-                                     )
-            logging.info(f"Processed {len(mh_individuals)} MyHeritage individuals.")
-        else:
-            logging.info("Skipping MyHeritage processing due to empty filtered IDs.")
-
+        # Commit changes if all processing is successful
         person_rm_session.commit()
         logging.info("Successfully inserted or updated individuals in PersonTable.")
     except Exception as per_e:
