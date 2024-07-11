@@ -106,10 +106,9 @@ def filter_selected_kits(filter_session: Session, f_selected_kits):
     return test_ids
 
 
-def insert_person(person_dg_session: Session, person_rm_session: Session, person_filtered_ids):
+def insert_person(person_dg_session: Session, person_rm_session: Session, person_filtered_ids, batch_size=1000):
     try:
         # Ancestry
-        # Import Ancestry_matchGroups into PersonTable.
         if person_filtered_ids.get('Ancestry_matchGroups'):
             ancestry_individuals_groups = person_dg_session.query(
                 Ancestry_matchGroups.testGuid,
@@ -117,8 +116,9 @@ def insert_person(person_dg_session: Session, person_rm_session: Session, person
                 Ancestry_matchGroups.matchGuid
             ).filter(
                 Ancestry_matchGroups.Id.in_(person_filtered_ids['Ancestry_matchGroups'])
-            ).all()
+            ).yield_per(batch_size)
 
+            count = 0
             for individual in ancestry_individuals_groups:
                 sex_value = 1 if individual.subjectGender == 'F' else 0 if individual.subjectGender == 'M' else 2
                 check_for_duplicates(person_rm_session,
@@ -126,11 +126,15 @@ def insert_person(person_dg_session: Session, person_rm_session: Session, person
                                      Sex=sex_value,
                                      Color=25,
                                      )
-            logging.info(f"Processed {len(ancestry_individuals_groups)} Ancestry individuals from matchGroups.")
+                count += 1
+                if count % batch_size == 0:
+                    person_rm_session.flush()  # Flush changes to the database
+
+            logging.info(f"Processed {count} Ancestry individuals from matchGroups.")
+            person_rm_session.commit()
         else:
             logging.info(f"Skipping Ancestry matchGroups processing due to empty filtered IDs.")
 
-        # Process Ancestry_matchTrees
         if person_filtered_ids.get('Ancestry_matchTrees'):
             ancestry_individuals_trees = person_dg_session.query(
                 Ancestry_matchTrees.matchid,
@@ -139,25 +143,30 @@ def insert_person(person_dg_session: Session, person_rm_session: Session, person
                 Ancestry_matchTrees.birthdate
             ).filter(
                 Ancestry_matchTrees.Id.in_(person_filtered_ids['Ancestry_matchTrees'])
-            ).all()
+            ).yield_per(batch_size)
 
+            count = 0
             for individual in ancestry_individuals_trees:
                 try:
                     unique_id = generate_unique_id(individual.given, individual.surname, individual.birthdate)
                     check_for_duplicates(person_rm_session,
                                          unique_id,
-                                         Sex=3,  # Adjust as per your data
-                                         Color=30,  # Adjust as per your data
+                                         Sex=2,  # Adjust as per your data
+                                         Color=25,  # Adjust as per your data
                                          )
+                    count += 1
+                    if count % batch_size == 0:
+                        person_rm_session.flush()  # Flush changes to the database
                 except Exception as ap_e:
                     logging.error(f"Error generating unique ID for individual: {ap_e}")
                     continue
 
-            logging.info(f"Processed {len(ancestry_individuals_trees)} Ancestry individuals from matchTrees.")
+            logging.info(f"Processed {count} Ancestry individuals from matchTrees.")
+            person_rm_session.commit()
         else:
             logging.info(f"Skipping Ancestry matchTrees processing due to empty filtered IDs.")
 
-        # Commit changes if all processing is successful
+        # Commit final changes if any records remain
         person_rm_session.commit()
         logging.info("Successfully inserted or updated individuals in PersonTable.")
     except Exception as per_e:
