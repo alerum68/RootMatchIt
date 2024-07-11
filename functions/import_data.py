@@ -34,8 +34,8 @@ def check_for_duplicates(session: Session, unique_id: str, **kwargs):
             logger.info(f"Created new person: {unique_id}")
 
         return person
-    except SQLAlchemyError as e:
-        logger.error(f"Error in get_or_create_person for {unique_id}: {e}")
+    except SQLAlchemyError as dup_e:
+        logger.error(f"Error in get_or_create_person for {unique_id}: {dup_e}")
         session.rollback()
         return None
 
@@ -71,7 +71,7 @@ def filter_selected_kits(filter_session: Session, f_selected_kits):
     return test_ids
 
 
-def insert_personTable(person_dg_session: Session, person_rm_session: Session, person_filtered_ids):
+def insert_person(person_dg_session: Session, person_rm_session: Session, person_filtered_ids):
 
     try:
         # Ancestry
@@ -83,8 +83,12 @@ def insert_personTable(person_dg_session: Session, person_rm_session: Session, p
             ).all()
 
             for individual in ancestry_individuals:
-                check_for_duplicates(person_rm_session, individual.matchGuid,
-                                     Sex=individual.subjectGender, Color=24)
+                sex_value = 1 if individual.subjectGender == 'F' else 0 if individual.subjectGender == 'M' else 2
+                check_for_duplicates(person_rm_session,
+                                     individual.matchGuid,
+                                     Sex=sex_value,
+                                     Color=25,
+                                     )
             logging.info(f"Processed {len(ancestry_individuals)} Ancestry individuals.")
         else:
             logging.info(f"Skipping Ancestry processing due to empty filtered IDs.")
@@ -92,14 +96,18 @@ def insert_personTable(person_dg_session: Session, person_rm_session: Session, p
         # FTDNA
         if person_filtered_ids.get('FTDNA_Matches2'):
             ftdna_individuals = person_dg_session.query(FTDNA_Matches2.Female,
-                                                        FTDNA_Matches2.Name).filter(
+                                                        FTDNA_Matches2.Name, FTDNA_Matches2.eKit2).filter(
                 FTDNA_Matches2.Id.in_(person_filtered_ids['FTDNA_Matches2'])
             ).all()
 
             for individual in ftdna_individuals:
                 unique_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, individual.Name))
-                sex_value = 1 if individual.Female is True else 0 if individual.Female is False else 2
-                check_for_duplicates(person_rm_session, unique_id, Sex=sex_value)
+                sex_value = 1 if individual.Female == 'true' else 0 if individual.Female == 'false' else 2
+                check_for_duplicates(person_rm_session,
+                                     unique_id,
+                                     Sex=sex_value,
+                                     Color=3,
+                                     )
             logging.info(f"Processed {len(ftdna_individuals)} FTDNA individuals.")
         else:
             logging.info("Skipping FTDNA processing due to empty filtered IDs.")
@@ -111,8 +119,12 @@ def insert_personTable(person_dg_session: Session, person_rm_session: Session, p
             ).all()
 
             for individual in mh_individuals:
-                sex_value = 1 if individual.gender == 'Female' else 0 if individual.gender == 'Male' else 2
-                check_for_duplicates(person_rm_session, individual.testid, Sex=sex_value)
+                sex_value = 1 if individual.gender == 'F' else 0 if individual.gender == 'M' else 2
+                check_for_duplicates(person_rm_session,
+                                     individual.testid,
+                                     Sex=sex_value,
+                                     Color=17,
+                                     )
             logging.info(f"Processed {len(mh_individuals)} MyHeritage individuals.")
         else:
             logging.info("Skipping MyHeritage processing due to empty filtered IDs.")
@@ -129,7 +141,11 @@ def insert_personTable(person_dg_session: Session, person_rm_session: Session, p
 
 if __name__ == '__main__':
     setup_logging()
-    
+
+    dg_session = None
+    rm_session = None
+    dg_engine = None
+    rm_engine = None
 
     try:
         DNAGEDCOM_DB_PATH, ROOTSMAGIC_DB_PATH = find_database_paths()
@@ -138,15 +154,15 @@ if __name__ == '__main__':
         if dna_kits:
             selected_kits = prompt_user_for_kits(dna_kits)
             filtered_ids = filter_selected_kits(dg_session, selected_kits)
-            insert_personTable(dg_session, rm_session, filtered_ids)
+            insert_person(dg_session, rm_session, filtered_ids)
     except Exception as e:
         logging.critical(f"Critical error in main execution: {e}")
     finally:
-        if 'dg_session' in locals():
+        if dg_session is not None:
             dg_session.close()
-        if 'rm_session' in locals():
+        if rm_session is not None:
             rm_session.close()
-        if 'dg_engine' in locals():
+        if dg_engine is not None:
             dg_engine.dispose()
-        if 'rm_engine' in locals():
+        if rm_engine is not None:
             rm_engine.dispose()

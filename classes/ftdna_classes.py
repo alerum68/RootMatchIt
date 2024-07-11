@@ -1,3 +1,4 @@
+# ftdna_classes.py
 from sqlalchemy import Column, Integer, Float, Index, BigInteger, String
 from sqlalchemy.orm import declarative_base
 
