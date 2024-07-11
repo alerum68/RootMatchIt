@@ -140,7 +140,8 @@ def insert_person(person_dg_session: Session, person_rm_session: Session, person
                 Ancestry_matchTrees.matchid,
                 Ancestry_matchTrees.given,
                 Ancestry_matchTrees.surname,
-                Ancestry_matchTrees.birthdate
+                Ancestry_matchTrees.birthdate,
+                Ancestry_matchTrees.personId
             ).filter(
                 Ancestry_matchTrees.Id.in_(person_filtered_ids['Ancestry_matchTrees'])
             ).yield_per(batch_size)
@@ -149,16 +150,30 @@ def insert_person(person_dg_session: Session, person_rm_session: Session, person
             for individual in ancestry_individuals_trees:
                 try:
                     unique_id = generate_unique_id(individual.given, individual.surname, individual.birthdate)
+
+                    sex_value = 2
+                    father_match = person_dg_session.query(Ancestry_matchTrees).filter(
+                        Ancestry_matchTrees.fatherId == individual.personId
+                    ).first()
+                    if father_match:
+                        sex_value = 0
+                    if sex_value == 2:
+                        mother_match = person_dg_session.query(Ancestry_matchTrees).filter(
+                            Ancestry_matchTrees.motherId == individual.personId
+                        ).first()
+                        if mother_match:
+                            sex_value = 1  # Female if found in motherId
+
                     check_for_duplicates(person_rm_session,
                                          unique_id,
-                                         Sex=2,  # Adjust as per your data
-                                         Color=25,  # Adjust as per your data
+                                         Sex=sex_value,
+                                         Color=24,  # Adjust as per your data
                                          )
                     count += 1
                     if count % batch_size == 0:
                         person_rm_session.flush()  # Flush changes to the database
                 except Exception as ap_e:
-                    logging.error(f"Error generating unique ID for individual: {ap_e}")
+                    logging.error(f"Error processing individual {individual.personId}: {ap_e}")
                     continue
 
             logging.info(f"Processed {count} Ancestry individuals from matchTrees.")
