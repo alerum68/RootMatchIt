@@ -4,6 +4,48 @@ from sqlalchemy.orm import declarative_base
 Ancestry_Base = declarative_base()
 
 
+class AncestryAncestorCouple(Ancestry_Base):
+    __tablename__ = 'AncestryAncestorCouple'
+
+    Id = Column(Integer, primary_key=True, autoincrement=True)
+    TestGuid = Column(String(36))
+    MatchGuid = Column(String(36))
+    FatherAmtGid = Column(String)
+    FatherBigTreeGid = Column(String)
+    FatherKinshipPathToSampleId = Column(String)
+    FatherKinshipPathFromSampleToMatch = Column(String)
+    FatherPotential = Column(Integer)
+    FatherInMatchTree = Column(Integer)
+    FatherInBestContributorTree = Column(Integer)
+    FatherDisplayName = Column(String)
+    FatherBirthYear = Column(String)
+    FatherDeathYear = Column(String)
+    FatherIsMale = Column(Integer)
+    FatherNotFound = Column(Integer)
+    FatherVeiled = Column(Integer)
+    FatherRelationshipToSampleId = Column(String)
+    FatherRelationshipFromSampleToMatch = Column(String)
+    MotherAmtGid = Column(String)
+    MotherBigTreeGid = Column(String)
+    MotherKinshipPathToSampleId = Column(String)
+    MotherKinshipPathFromSampleToMatch = Column(String)
+    MotherPotential = Column(Integer)
+    MotherInMatchTree = Column(Integer)
+    MotherInBestContributorTree = Column(Integer)
+    MotherDisplayName = Column(String)
+    MotherBirthYear = Column(String)
+    MotherDeathYear = Column(String)
+    MotherIsFemale = Column(Integer)
+    MotherNotFound = Column(Integer)
+    MotherVeiled = Column(Integer)
+    MotherRelationshipToSampleId = Column(String)
+    MotherRelationshipFromSampleToMatch = Column(String)
+
+    __table_args__ = (
+        UniqueConstraint('TestGuid', 'MatchGuid', name='IDX_AncestryAncestorCouple'),
+    )
+
+
 class Ancestry_ICW(Ancestry_Base):
     __tablename__ = 'Ancestry_ICW'
 
