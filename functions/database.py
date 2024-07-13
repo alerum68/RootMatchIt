@@ -1,5 +1,7 @@
 # database.py
 # Local Imports
+from sqlalchemy.event import listen
+
 from setup_logging import setup_logging
 
 # Remote Imports
@@ -20,6 +22,13 @@ def init_db(database_url):
     dg_session = Session()
     rm_session = Session()
     return dg_session, rm_session
+
+
+def rmnocase_collation(str1, str2):
+    return (str1.lower() > str2.lower()) - (str1.lower() < str2.lower())
+
+def add_collation(dbapi_conn, _):
+    dbapi_conn.create_collation('RMNOCASE', rmnocase_collation)
 
 
 def find_database_paths():
@@ -62,19 +71,19 @@ def connect_to_db(db_path, db_name=None):
 
 
 def connect_to_db_sqlalchemy(dg_db_path, rm_db_path):
-    # Connect to DNAGedcom and RootsMagic databases using SQLAlchemy.
+    # Connect to a SQLite database using SqlAlchemy.
     try:
         # Connect to DNAGedcom database
         dg_engine = create_engine(f"sqlite:///{dg_db_path}")
         DGSession = sessionmaker(bind=dg_engine)
         dg_session = DGSession()
+        logging.info(f"Connected to DNAGedcom database at: {dg_db_path} using SQLAlchemy")
 
         # Connect to RootsMagic database
         rm_engine = create_engine(f"sqlite:///{rm_db_path}")
+        listen(rm_engine, 'connect', add_collation)
         RMSession = sessionmaker(bind=rm_engine)
         rm_session = RMSession()
-
-        logging.info(f"Connected to DNAGedcom database at: {dg_db_path} using SQLAlchemy")
         logging.info(f"Connected to RootsMagic database at: {rm_db_path} using SQLAlchemy")
 
         return dg_session, dg_engine, rm_session, rm_engine
@@ -85,7 +94,6 @@ def connect_to_db_sqlalchemy(dg_db_path, rm_db_path):
 
 
 def main():
-    # Main function to run the script.
     setup_logging()
 
     dnagedcom_conn = None

@@ -22,7 +22,7 @@ rm_base = RM_Base()
 limit = 50
 # Ancestry
 ancestry_matchgroups = 1
-ancestry_matchtrees = 1
+ancestry_matchtrees = 0
 ancestry_treedata = 0
 ancestry_icw = 0
 ancestry_ancestorcouple = 0
@@ -601,11 +601,17 @@ def insert_person(person_rm_session: Session, processed_data, batch_size=1000):
         processed_count = 0
 
         for data in processed_data:
-            check_for_duplicates(person_rm_session,
-                                 data['unique_id'],
-                                 Sex=data['sex'],
-                                 Color=data['color'],
-                                 )
+            person = PersonTable(
+                UniqueID=data['unique_id'],
+                Sex=data['sex'],
+                Color=data['color']
+            )
+            person_rm_session.add(person)
+            person_rm_session.flush()  # Ensure the person is written to get the ID
+
+            # Retrieve and assign the generated PersonID
+            data['PersonID'] = person.PersonID
+
             processed_count += 1
             if processed_count % batch_size == 0:
                 person_rm_session.flush()
@@ -617,6 +623,117 @@ def insert_person(person_rm_session: Session, processed_data, batch_size=1000):
         person_rm_session.rollback()
     finally:
         person_rm_session.close()
+
+
+def insert_name(session: Session, processed_data, batch_size=1000):
+    logger = logging.getLogger('insert_name')
+    logger.info("Inserting or updating names in NameTable...")
+
+    if session is None:
+        logger.error("Invalid session object provided")
+        raise ValueError("A valid Session object must be provided")
+
+    try:
+        processed_count = 0
+        for data in processed_data:
+            # Get PersonID from processed_data
+            person_id = data.get('PersonID')
+            if not person_id:
+                logger.warning(f"PersonID not found for data: {data}")
+                continue
+
+            # Map processed_data to NameTable columns
+            name_data = {
+                'OwnerID': person_id,
+                'Surname': data.get('Surname', ''),
+                'Given': data.get('Given', ''),
+                'NameType': 2,
+                'IsPrimary': 1,
+                'SurnameMP': data.get('Surname', ''),
+                'GivenMP': data.get('Given', ''),
+            }
+
+            # Check if a name record already exists for this person
+            existing_name = session.query(NameTable).filter_by(OwnerID=name_data['OwnerID']).first()
+
+            if existing_name:
+                # Update existing record
+                for key, value in name_data.items():
+                    setattr(existing_name, key, value)
+                logger.info(f"Updated existing name for OwnerID: {name_data['OwnerID']}")
+            else:
+                # Create new record
+                new_name = NameTable(**name_data)
+                session.add(new_name)
+                logger.info(f"Inserted new name for OwnerID: {name_data['OwnerID']}")
+
+            processed_count += 1
+            if processed_count % batch_size == 0:
+                session.flush()
+
+        session.commit()
+        logger.info(f"Processed {processed_count} name records.")
+
+    except Exception as e:
+        logger.error(f"Error inserting or updating NameTable: {e}")
+        session.rollback()
+        raise
+
+
+def insert_event(event_rm_session: Session, processed_data, batch_size=1000):
+    logger = logging.getLogger('insert_event')
+    logger.info("Inserting or updating records in EventTable...")
+
+    try:
+        processed_count = 0
+        for data in processed_data:
+            event = event_rm_session.query(EventTable).filter_by(EventID=data['EventID']).first()
+            if event:
+                for key, value in data.items():
+                    setattr(event, key, value)
+            else:
+                event = EventTable(**data)
+                event_rm_session.add(event)
+
+            processed_count += 1
+            if processed_count % batch_size == 0:
+                event_rm_session.flush()
+
+        event_rm_session.commit()
+        logger.info(f"Processed {processed_count} event records.")
+    except Exception as e:
+        logger.error(f"Error inserting or updating EventTable: {e}")
+        event_rm_session.rollback()
+    finally:
+        event_rm_session.close()
+
+
+def insert_place(place_rm_session: Session, processed_data, batch_size=1000):
+    logger = logging.getLogger('insert_place')
+    logger.info("Inserting or updating records in PlaceTable...")
+
+    try:
+        processed_count = 0
+        for data in processed_data:
+            place = place_rm_session.query(PlaceTable).filter_by(PlaceID=data['PlaceID']).first()
+            if place:
+                for key, value in data.items():
+                    setattr(place, key, value)
+            else:
+                place = PlaceTable(**data)
+                place_rm_session.add(place)
+
+            processed_count += 1
+            if processed_count % batch_size == 0:
+                place_rm_session.flush()
+
+        place_rm_session.commit()
+        logger.info(f"Processed {processed_count} place records.")
+    except Exception as e:
+        logger.error(f"Error inserting or updating PlaceTable: {e}")
+        place_rm_session.rollback()
+    finally:
+        place_rm_session.close()
 
 
 def insert_child(child_rm_session: Session, processed_data, batch_size=1000):
@@ -673,34 +790,6 @@ def insert_dna(dna_rm_session: Session, processed_data, batch_size=1000):
         dna_rm_session.rollback()
     finally:
         dna_rm_session.close()
-
-
-def insert_event(event_rm_session: Session, processed_data, batch_size=1000):
-    logger = logging.getLogger('insert_event')
-    logger.info("Inserting or updating records in EventTable...")
-
-    try:
-        processed_count = 0
-        for data in processed_data:
-            event = event_rm_session.query(EventTable).filter_by(EventID=data['EventID']).first()
-            if event:
-                for key, value in data.items():
-                    setattr(event, key, value)
-            else:
-                event = EventTable(**data)
-                event_rm_session.add(event)
-
-            processed_count += 1
-            if processed_count % batch_size == 0:
-                event_rm_session.flush()
-
-        event_rm_session.commit()
-        logger.info(f"Processed {processed_count} event records.")
-    except Exception as e:
-        logger.error(f"Error inserting or updating EventTable: {e}")
-        event_rm_session.rollback()
-    finally:
-        event_rm_session.close()
 
 
 def insert_fact_type(fact_type_rm_session: Session, processed_data, batch_size=1000):
@@ -787,62 +876,6 @@ def insert_group(group_rm_session: Session, processed_data, batch_size=1000):
         group_rm_session.close()
 
 
-def insert_name(name_rm_session: Session, processed_data, batch_size=1000):
-    logger = logging.getLogger('insert_name')
-    logger.info("Inserting or updating records in NameTable...")
-
-    try:
-        processed_count = 0
-        for data in processed_data:
-            name = name_rm_session.query(NameTable).filter_by(NameID=data['NameID']).first()
-            if name:
-                for key, value in data.items():
-                    setattr(name, key, value)
-            else:
-                name = NameTable(**data)
-                name_rm_session.add(name)
-
-            processed_count += 1
-            if processed_count % batch_size == 0:
-                name_rm_session.flush()
-
-        name_rm_session.commit()
-        logger.info(f"Processed {processed_count} name records.")
-    except Exception as e:
-        logger.error(f"Error inserting or updating NameTable: {e}")
-        name_rm_session.rollback()
-    finally:
-        name_rm_session.close()
-
-
-def insert_place(place_rm_session: Session, processed_data, batch_size=1000):
-    logger = logging.getLogger('insert_place')
-    logger.info("Inserting or updating records in PlaceTable...")
-
-    try:
-        processed_count = 0
-        for data in processed_data:
-            place = place_rm_session.query(PlaceTable).filter_by(PlaceID=data['PlaceID']).first()
-            if place:
-                for key, value in data.items():
-                    setattr(place, key, value)
-            else:
-                place = PlaceTable(**data)
-                place_rm_session.add(place)
-
-            processed_count += 1
-            if processed_count % batch_size == 0:
-                place_rm_session.flush()
-
-        place_rm_session.commit()
-        logger.info(f"Processed {processed_count} place records.")
-    except Exception as e:
-        logger.error(f"Error inserting or updating PlaceTable: {e}")
-        place_rm_session.rollback()
-    finally:
-        place_rm_session.close()
-
-
 def insert_url(url_rm_session: Session, processed_data, batch_size=1000):
     logger = logging.getLogger('insert_url')
     logger.info("Inserting or updating records in URLTable...")
@@ -898,24 +931,28 @@ def main():
         filtered_ids = filter_selected_kits(dg_session, selected_kits)
 
         logging.info("Processing data...")
-        processed_data = (
-                process_ancestry(dg_session, filtered_ids) +
-                process_ftdna(dg_session, filtered_ids) +
-                process_mh(dg_session, filtered_ids)
-        )
+        processed_ancestry_data = process_ancestry(dg_session, filtered_ids)
+        processed_ftdna_data = process_ftdna(dg_session, filtered_ids)
+        processed_mh_data = process_mh(dg_session, filtered_ids)
+
+        # Combine all processed data
+        processed_data = processed_ancestry_data + processed_ftdna_data + processed_mh_data
 
         logging.info("Inserting processed data into RootsMagic database...")
-        insert_fact_type(rm_session, processed_data)
-        insert_person(rm_session, processed_data)
-        insert_name(rm_session, processed_data)
-        insert_child(rm_session, processed_data)
-        insert_family(rm_session, processed_data)
-        insert_event(rm_session, processed_data)
-        insert_dna(rm_session, processed_data)
-        insert_place(rm_session, processed_data)
-        insert_url(rm_session, processed_data)
-        insert_group(rm_session, processed_data)
-
+        try:
+            insert_person(rm_session, processed_data)
+            insert_name(rm_session, processed_data)
+            # Uncomment and add other insert functions as needed
+            # insert_fact_type(rm_session, processed_data)
+            # insert_child(rm_session, processed_data)
+            # insert_family(rm_session, processed_data)
+            # insert_event(rm_session, processed_data)
+            # insert_dna(rm_session, processed_data)
+            # insert_place(rm_session, processed_data)
+            # insert_url(rm_session, processed_data)
+            # insert_group(rm_session, processed_data)
+        except Exception as e:
+            logging.error(f"Error during data insertion: {e}")
     else:
         logging.warning("No kits found.")
 
