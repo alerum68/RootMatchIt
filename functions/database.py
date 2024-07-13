@@ -27,6 +27,7 @@ def init_db(database_url):
 def rmnocase_collation(str1, str2):
     return (str1.lower() > str2.lower()) - (str1.lower() < str2.lower())
 
+
 def add_collation(dbapi_conn, _):
     dbapi_conn.create_collation('RMNOCASE', rmnocase_collation)
 
