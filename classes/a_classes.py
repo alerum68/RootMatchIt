@@ -152,6 +152,3 @@ class Ancestry_TreeData(Ancestry_Base):
     NoTrees = Column(Integer)
     TreeUnavailable = Column(Integer)
     matchGuid = Column(String)  # Define matchGuid as a column here
-
-    def __repr__(self):
-        return f"<Ancestry_TreeData(Id={self.Id}, TestGuid={self.TestGuid})>"

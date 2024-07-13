@@ -18,14 +18,29 @@ ftdna_base = FTDNA_Base()
 mh_base = MH_Base()
 rm_base = RM_Base()
 
+# Switches
+limit = 50
+ancestry_matchgroups = 1
+ancestry_matchtrees = 0
+ftdna_matches2 = 0
+mh_match = 0
+
+
+def process_table_with_limit(session, table_class, filter_ids, process_func, apply_limit):
+    query = session.query(table_class).filter(table_class.Id.in_(filter_ids))
+    if apply_limit > 0:
+        query = query.limit(apply_limit)
+    limited_data = query.all()
+    processed_data = [process_func(item) for item in limited_data]
+    return processed_data[:apply_limit] if apply_limit > 0 else processed_data
+
 
 def generate_unique_id(*args) -> str:
-    # Filter out empty or None values from the arguments
     filtered_args = [str(arg) for arg in args if arg]
     if not filtered_args:
-        return str(uuid.uuid4())  # Return a random UUID if all args are empty
-    unique_str = ' '.join(filtered_args)  # Combine all arguments into a single string
-    namespace = uuid.NAMESPACE_DNS  # Use a predefined namespace, or create your own using uuid.uuid4()
+        return str(uuid.uuid4())
+    unique_str = ' '.join(filtered_args)
+    namespace = uuid.NAMESPACE_DNS
     unique_id = str(uuid.uuid5(namespace, unique_str))
     return unique_id
 
@@ -35,16 +50,13 @@ def check_for_duplicates(session: Session, unique_id: str, **kwargs):
     try:
         person = session.query(PersonTable).filter_by(UniqueID=unique_id).first()
         if person:
-            # Update existing person with new data
             for key, value in kwargs.items():
                 setattr(person, key, value)
             logger.info(f"Updated existing person: {unique_id}")
         else:
-            # Create new person
             person = PersonTable(UniqueID=unique_id, **kwargs)
             session.add(person)
             logger.info(f"Created new person: {unique_id}")
-
         return person
     except SQLAlchemyError as dup_e:
         logger.error(f"Error in get_or_create_person for {unique_id}: {dup_e}")
@@ -53,169 +65,211 @@ def check_for_duplicates(session: Session, unique_id: str, **kwargs):
 
 
 def filter_selected_kits(filter_session: Session, f_selected_kits):
+    global ancestry_matchgroups, ancestry_matchtrees, ftdna_matches2, mh_match
     logger = logging.getLogger('filter_selected_kits')
     logger.info("Filtering selected kits...")
 
-    selected_guids = [kit[1] for kit in f_selected_kits]  # Extracting GUIDs from selected kits
-    test_ids = {}
+    selected_guids = [kit[1] for kit in f_selected_kits]
+    test_ids = {'Ancestry_matchGroups': [], 'Ancestry_matchTrees': [], 'FTDNA_Matches2': [], 'MH_Match': []}
 
     try:
-        # Example for Ancestry_matchGroups table
-        ancestry_matches = filter_session.query(Ancestry_matchGroups).filter(
-            Ancestry_matchGroups.testGuid.in_(selected_guids)).all()
-        test_ids['Ancestry_matchGroups'] = [match.Id for match in ancestry_matches]
+        if ancestry_matchgroups:
+            ancestry_matches = filter_session.query(Ancestry_matchGroups).filter(
+                Ancestry_matchGroups.testGuid.in_(selected_guids)).all()
+            test_ids['Ancestry_matchGroups'] = [match.Id for match in ancestry_matches]
 
-        logger.info("Processing Ancestry_matchTrees with selected GUIDs: %s", selected_guids)
+            # Get matchGuids for use in ancestry_matchtrees
+            match_guids = []
 
-        # Step 1: Retrieve matchGuids from Ancestry_matchGroups
-        match_guids = [group.matchGuid for group in ancestry_matches]
-        logger.info("Found matchGuids in Ancestry_matchGroups: %s", match_guids)
+            if ancestry_matches:
+                match_guids = [group.matchGuid for group in ancestry_matches]
 
-        # Step 2: Filter Ancestry_matchTrees based on matchGuids (previously matchid)
-        ancestry_matches_trees = filter_session.query(Ancestry_matchTrees).filter(
-            Ancestry_matchTrees.matchid.in_(match_guids)).all()
-
-        matched_ids = [match.Id for match in ancestry_matches_trees]
-        logger.info("Matched IDs found in Ancestry_matchTrees: %s", matched_ids)
-
-        test_ids['Ancestry_matchTrees'] = matched_ids
-
-        # Example for FTDNA_Matches2 table
-        ftdna_matches = filter_session.query(FTDNA_Matches2).filter(
-            FTDNA_Matches2.eKit1.in_(selected_guids) | FTDNA_Matches2.eKit2.in_(selected_guids)).all()
-        test_ids['FTDNA_Matches2'] = [match.Id for match in ftdna_matches]
-
-        # Example for MH_Match table
-        mh_matches = filter_session.query(MH_Match).filter(
-            MH_Match.guid.in_(selected_guids)).all()
-        test_ids['MH_Match'] = [match.Id for match in mh_matches]
-
-        # Extend for other tables as needed
-
-        if not any(test_ids.values()):
-            test_ids = {}  # Clear the dictionary if no matches are found
-
-        if test_ids:
-            logger.info(f"Test IDs found: {test_ids}")
-        else:
-            logger.info("No test IDs found.")
+            if ancestry_matchtrees:
+                # Use both selected_guids and match_guids (if available) for ancestry_matchtrees
+                guids_to_check = selected_guids + match_guids
+                ancestry_matches_trees = filter_session.query(Ancestry_matchTrees).filter(
+                    Ancestry_matchTrees.matchid.in_(guids_to_check)).all()
+                test_ids['Ancestry_matchTrees'] = [match.Id for match in ancestry_matches_trees]
 
     except Exception as filter_e:
         logger.error(f"Error filtering selected kits: {filter_e}")
+        raise
 
     return test_ids
 
 
-def insert_person(person_dg_session: Session, person_rm_session: Session, person_filtered_ids, batch_size=1000):
+def process_ancestry(session: Session, filtered_ids):
+    global limit
+    logger = logging.getLogger('process_ancestry')
+    logger.info("Processing Ancestry data...")
+
+    processed_ancestry_data = []
+
     try:
-        # Ancestry
-        if person_filtered_ids.get('Ancestry_matchGroups'):
-            ancestry_individuals_groups = person_dg_session.query(
-                Ancestry_matchGroups.testGuid,
-                Ancestry_matchGroups.subjectGender,
-                Ancestry_matchGroups.matchGuid
-            ).filter(
-                Ancestry_matchGroups.Id.in_(person_filtered_ids['Ancestry_matchGroups'])
-            ).yield_per(batch_size)
+        if ancestry_matchgroups and filtered_ids.get('Ancestry_matchGroups'):
+            def process_matchgroup(group):
+                return {
+                    'unique_id': generate_unique_id(group.testGuid, group.matchGuid),
+                    'sex': 1 if group.subjectGender == 'F' else 0 if group.subjectGender == 'M' else 2,
+                    'color': 25
+                }
 
-            count = 0
-            for individual in ancestry_individuals_groups:
-                sex_value = 1 if individual.subjectGender == 'F' else 0 if individual.subjectGender == 'M' else 2
-                check_for_duplicates(person_rm_session,
-                                     individual.matchGuid,
-                                     Sex=sex_value,
-                                     Color=25,
-                                     )
-                count += 1
-                if count % batch_size == 0:
-                    person_rm_session.flush()  # Flush changes to the database
+            processed_ancestry_data.extend(process_table_with_limit(
+                session, Ancestry_matchGroups, filtered_ids['Ancestry_matchGroups'],
+                process_matchgroup, limit
+            ))
 
-            logging.info(f"Processed {count} Ancestry individuals from matchGroups.")
-            person_rm_session.commit()
-        else:
-            logging.info(f"Skipping Ancestry matchGroups processing due to empty filtered IDs.")
+        if ancestry_matchtrees and filtered_ids.get('Ancestry_matchTrees'):
+            def process_matchtree(individual):
+                sex = 2  # Default to Unknown
+                if individual.personId:
+                    if individual.fatherId and individual.personId in individual.fatherId:
+                        sex = 0  # Male
+                    elif individual.motherId and individual.personId in individual.motherId:
+                        sex = 1  # Female
 
-        if person_filtered_ids.get('Ancestry_matchTrees'):
-            ancestry_individuals_trees = person_dg_session.query(
-                Ancestry_matchTrees.matchid,
-                Ancestry_matchTrees.given,
-                Ancestry_matchTrees.surname,
-                Ancestry_matchTrees.birthdate,
-                Ancestry_matchTrees.personId
-            ).filter(
-                Ancestry_matchTrees.Id.in_(person_filtered_ids['Ancestry_matchTrees'])
-            ).yield_per(batch_size)
+                return {
+                    'unique_id': generate_unique_id(individual.given, individual.surname, individual.birthdate),
+                    'sex': sex,
+                    'color': 24
+                }
 
-            count = 0
-            for individual in ancestry_individuals_trees:
-                try:
-                    unique_id = generate_unique_id(individual.given, individual.surname, individual.birthdate)
+            processed_ancestry_data.extend(process_table_with_limit(
+                session, Ancestry_matchTrees, filtered_ids['Ancestry_matchTrees'],
+                process_matchtree, limit
+            ))
 
-                    sex_value = 2
-                    father_match = person_dg_session.query(Ancestry_matchTrees).filter(
-                        Ancestry_matchTrees.fatherId == individual.personId
-                    ).first()
-                    if father_match:
-                        sex_value = 0
-                    if sex_value == 2:
-                        mother_match = person_dg_session.query(Ancestry_matchTrees).filter(
-                            Ancestry_matchTrees.motherId == individual.personId
-                        ).first()
-                        if mother_match:
-                            sex_value = 1  # Female if found in motherId
+    except Exception as e:
+        logger.error(f"Error processing Ancestry data: {e}")
 
-                    check_for_duplicates(person_rm_session,
-                                         unique_id,
-                                         Sex=sex_value,
-                                         Color=24,  # Adjust as per your data
-                                         )
-                    count += 1
-                    if count % batch_size == 0:
-                        person_rm_session.flush()  # Flush changes to the database
-                except Exception as ap_e:
-                    logging.error(f"Error processing individual {individual.personId}: {ap_e}")
-                    continue
+    return processed_ancestry_data
 
-            logging.info(f"Processed {count} Ancestry individuals from matchTrees.")
-            person_rm_session.commit()
-        else:
-            logging.info(f"Skipping Ancestry matchTrees processing due to empty filtered IDs.")
 
-        # Commit final changes if any records remain
+def process_ftdna(session: Session, filtered_ids):
+    global limit
+    logger = logging.getLogger('process_ftdna')
+    logger.info("Processing FTDNA data...")
+
+    processed_ftdna_data = []
+
+    try:
+        if ftdna_matches2 and filtered_ids.get('FTDNA_Matches2'):
+            def process_ftdna_match(match):
+                return {
+                    'unique_id': generate_unique_id(match.eKit1, match.eKit2),
+                    'sex': 1 if match.Female else 0,
+                    'color': 26
+                }
+
+            processed_ftdna_data.extend(process_table_with_limit(
+                session, FTDNA_Matches2, filtered_ids['FTDNA_Matches2'],
+                process_ftdna_match, limit
+            ))
+
+    except Exception as e:
+        logger.error(f"Error processing FTDNA data: {e}")
+
+    return processed_ftdna_data
+
+
+def process_mh(session: Session, filtered_ids):
+    global limit
+    logger = logging.getLogger('process_mh')
+    logger.info("Processing MyHeritage data...")
+
+    processed_mh_data = []
+
+    try:
+        if mh_match and filtered_ids.get('MH_Match'):
+            def process_mh_match(match):
+                return {
+                    'unique_id': generate_unique_id(match.guid),
+                    'sex': 1 if match.gender == 'F' else 0 if match.gender == 'M' else 2,
+                    'color': 27
+                }
+
+            processed_mh_data.extend(process_table_with_limit(
+                session, MH_Match, filtered_ids['MH_Match'],
+                process_mh_match, limit
+            ))
+
+    except Exception as e:
+        logger.error(f"Error processing MyHeritage data: {e}")
+
+    return processed_mh_data
+
+
+def insert_person(person_rm_session: Session, processed_data, batch_size=1000):
+    logger = logging.getLogger('insert_person')
+    logger.info("Inserting or updating individuals in PersonTable...")
+
+    try:
+        processed_count = 0
+
+        for data in processed_data:
+            check_for_duplicates(person_rm_session,
+                                 data['unique_id'],
+                                 Sex=data['sex'],
+                                 Color=data['color'],
+                                 )
+            processed_count += 1
+            if processed_count % batch_size == 0:
+                person_rm_session.flush()
+
         person_rm_session.commit()
-        logging.info("Successfully inserted or updated individuals in PersonTable.")
-    except Exception as per_e:
-        logging.error(f"Error inserting or updating PersonTable: {per_e}")
+        logger.info(f"Processed {processed_count} individuals.")
+    except Exception as e:
+        logger.error(f"Error inserting or updating PersonTable: {e}")
         person_rm_session.rollback()
     finally:
         person_rm_session.close()
-        person_dg_session.close()
 
 
-if __name__ == '__main__':
+def main():
     setup_logging()
+    logging.info("Connecting to databases...")
+    DNAGEDCOM_DB_PATH, ROOTSMAGIC_DB_PATH = find_database_paths()
 
-    dg_session = None
-    rm_session = None
-    dg_engine = None
-    rm_engine = None
+    # Connect to DNAGedcom and RootsMagic databases using SQLAlchemy
+    dg_session, dg_engine, rm_session, rm_engine = connect_to_db_sqlalchemy(DNAGEDCOM_DB_PATH, ROOTSMAGIC_DB_PATH)
 
-    try:
-        DNAGEDCOM_DB_PATH, ROOTSMAGIC_DB_PATH = find_database_paths()
-        dg_session, dg_engine, rm_session, rm_engine = connect_to_db_sqlalchemy(DNAGEDCOM_DB_PATH, ROOTSMAGIC_DB_PATH)
-        dna_kits = user_kit_data(dg_session)
-        if dna_kits:
-            selected_kits = prompt_user_for_kits(dna_kits)
-            filtered_ids = filter_selected_kits(dg_session, selected_kits)
-            insert_person(dg_session, rm_session, filtered_ids)
-    except Exception as e:
-        logging.critical(f"Critical error in main execution: {e}")
-    finally:
-        if dg_session is not None:
-            dg_session.close()
-        if rm_session is not None:
-            rm_session.close()
-        if dg_engine is not None:
-            dg_engine.dispose()
-        if rm_engine is not None:
-            rm_engine.dispose()
+    if not all([dg_session, dg_engine, rm_session, rm_engine]):
+        logging.critical("Failed to connect to one or both databases using SQLAlchemy.")
+        return
+
+    logging.info("Fetching user kit data...")
+    dna_kits = user_kit_data(dg_session)
+
+    if dna_kits:
+        logging.info("Prompting user for kits...")
+        selected_kits = prompt_user_for_kits(dna_kits)
+
+        logging.info("Selected kits:")
+        for kit in selected_kits:
+            logging.info(f"Type: {kit[0]}, GUID: {kit[1]}, Name: {kit[2]} {kit[3]}")
+
+        logging.info("Filtering selected kits...")
+        filtered_ids = filter_selected_kits(dg_session, selected_kits)
+
+        logging.info("Processing data...")
+        processed_data = (
+                process_ancestry(dg_session, filtered_ids) +
+                process_ftdna(dg_session, filtered_ids) +
+                process_mh(dg_session, filtered_ids)
+        )
+
+        logging.info("Inserting processed data into RootsMagic database...")
+        insert_person(rm_session, processed_data)
+
+    else:
+        logging.warning("No kits found.")
+
+    # Close sessions and engines
+    dg_session.close()
+    dg_engine.dispose()
+    rm_session.close()
+    rm_engine.dispose()
+
+
+if __name__ == "__main__":
+    main()
