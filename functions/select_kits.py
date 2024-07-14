@@ -1,32 +1,20 @@
-# select_kits.py
 import logging
 import re
-from sqlalchemy import create_engine, Column, String
-from sqlalchemy.orm import sessionmaker, declarative_base
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from a_classes import Ancestry_Profiles  # Import from a_classes
 from database import find_database_paths
+from ftdna_classes import DNAKit  # Import from ftdna_classes
 from setup_logging import setup_logging
-
-Kits_Base = declarative_base()
-
-
-class AncestryProfile(Kits_Base):
-    __tablename__ = 'Ancestry_Profiles'
-    guid = Column(String, primary_key=True)
-    name = Column(String)
-
-
-class DNAKit(Kits_Base):
-    __tablename__ = 'DNA_Kits'
-    company = Column(String)
-    guid = Column(String, primary_key=True)
-    name = Column(String)
 
 
 def user_kit_data(session):
     dna_kits = []
     try:
         # Query Ancestry_Profiles
-        ancestry_profiles = session.query(AncestryProfile).all()
+        ancestry_profiles = session.query(Ancestry_Profiles).all()
         logging.debug(f"Found {len(ancestry_profiles)} entries in Ancestry_Profiles.")
 
         dna_kits.extend(
