@@ -137,9 +137,10 @@ def filter_selected_kits(filter_session: Session, f_selected_kits):
 
         # FTDNA filters
         if ftdna_matches2 or ftdna_chromo2 or ftdna_icw2 or dg_tree or dg_individual:
-            ftdna_matches = filter_session.query(FTDNA_Matches2).filter(
-                FTDNA_Matches2.eKit1.in_(selected_guids)).all()
-            test_ids['FTDNA_Matches2'] = [match.Id for match in ftdna_matches]
+            if ftdna_matches2:
+                ftdna_matches = filter_session.query(FTDNA_Matches2).filter(
+                    FTDNA_Matches2.eKit1.in_(selected_guids)).all()
+                test_ids['FTDNA_Matches2'] = [match.Id for match in ftdna_matches]
 
             if ftdna_chromo2:
                 ftdna_chromo = filter_session.query(FTDNA_Chromo2).filter(
@@ -163,9 +164,10 @@ def filter_selected_kits(filter_session: Session, f_selected_kits):
 
         # MyHeritage filters
         if mh_match or mh_ancestors or mh_chromo or mh_icw or mh_tree:
-            mh_matches = filter_session.query(MH_Match).filter(
-                MH_Match.guid.in_(selected_guids)).all()
-            test_ids['MH_Match'] = [match.Id for match in mh_matches]
+            if mh_match:
+                mh_matches = filter_session.query(MH_Match).filter(
+                    MH_Match.guid.in_(selected_guids)).all()
+                test_ids['MH_Match'] = [match.Id for match in mh_matches]
 
             if mh_ancestors:
                 mh_ancestors_data = filter_session.query(MH_Ancestors).filter(
@@ -238,16 +240,22 @@ def process_ancestry(session: Session, filtered_ids):
 
         if ancestry_matchtrees and filtered_ids.get('Ancestry_matchTrees'):
             def process_matchtree(tree):
-                sex = 2
-                if tree.personId:
-                    if tree.fatherId and tree.personId in tree.fatherId:
-                        sex = 0
-                    elif tree.motherId and tree.personId in tree.motherId:
-                        sex = 1
+                sex_value = 2
+                father_match = session.query(Ancestry_matchTrees).filter(
+                    Ancestry_matchTrees.fatherId == tree.personId
+                ).first()
+                if father_match:
+                    sex_value = 0
+                if sex_value == 2:
+                    mother_match = session.query(Ancestry_matchTrees).filter(
+                        Ancestry_matchTrees.motherId == tree.personId
+                    ).first()
+                    if mother_match:
+                        sex_value = 1  # Female if found in motherId
 
                 return {
                     'unique_id': generate_unique_id(tree.given, tree.surname, tree.birthdate),
-                    'sex': sex,
+                    'sex': sex_value,
                     'color': 24,
                     'matchid': tree.matchid,
                     'Surname': tree.surname,
