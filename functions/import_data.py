@@ -25,10 +25,10 @@ limit = 500
 # Ancestry
 ancestry_matchgroups = 1
 ancestry_matchtrees = 1
-ancestry_treedata = 0
-ancestry_icw = 0
-ancestry_ancestorcouple = 0
-ancestry_matchethnicity = 0
+ancestry_treedata = 1
+ancestry_icw = 1
+ancestry_ancestorcouple = 1
+ancestry_matchethnicity = 1
 # FTDNA
 ftdna_matches2 = 0
 ftdna_chromo2 = 0
@@ -203,11 +203,18 @@ def process_ancestry(session: Session, filtered_ids):
     processed_ancestry_data = []
 
     try:
+        # Check condition before calling process_matchgroups
         if ancestry_matchgroups and filtered_ids.get('Ancestry_matchGroups'):
-            def process_matchgroup(group):
+            # Define process_matchgroup function to process Ancestry match groups
+            def process_matchgroup(mg_session, group):
+                match_tree = mg_session.query(Ancestry_matchTrees).filter_by(matchid=group.matchGuid).first()
+                person_id = match_tree.personId if match_tree else None
+
                 name = group.matchTestDisplayName
                 given, surname = (name.split()[0], name.split()[-1]) if len(name.split()) > 1 else (name, "")
-                return {
+
+                match_group = {
+                    'PersonID': person_id,
                     'unique_id': group.matchGuid,
                     'sex': 1 if group.subjectGender == 'F' else 0 if group.subjectGender == 'M' else 2,
                     'color': 25,
@@ -233,10 +240,16 @@ def process_ancestry(session: Session, filtered_ids):
                     'NameType': 6,
                 }
 
-            processed_ancestry_data.extend(process_table_with_limit(
+                return match_group
+
+            # Process Ancestry match groups
+            match_groups = process_table_with_limit(
                 session, Ancestry_matchGroups, filtered_ids['Ancestry_matchGroups'],
-                process_matchgroup, limit
-            ))
+                lambda group: process_matchgroup(session, group), limit
+            )
+
+            # Extend processed data with the processed match groups
+            processed_ancestry_data.extend(match_groups)
 
         if ancestry_matchtrees and filtered_ids.get('Ancestry_matchTrees'):
             def process_matchtree(tree):
@@ -274,11 +287,15 @@ def process_ancestry(session: Session, filtered_ids):
                     'NameType': 2,
                 }
 
-            processed_ancestry_data.extend(process_table_with_limit(
+            # Process Ancestry match trees
+            match_trees = process_table_with_limit(
                 session, Ancestry_matchTrees, filtered_ids['Ancestry_matchTrees'],
                 process_matchtree, limit
-            ))
+            )
 
+            processed_ancestry_data.extend(match_trees)
+
+        # Check if Ancestry_TreeData should be processed
         if ancestry_treedata and filtered_ids.get('Ancestry_TreeData'):
             def process_treedata(treedata):
                 return {
@@ -290,19 +307,25 @@ def process_ancestry(session: Session, filtered_ids):
                     'TreeId': treedata.TreeId,
                     'NoTrees': treedata.NoTrees,
                     'TreeUnavailable': treedata.TreeUnavailable,
-                    'matchGuid': treedata.matchGuid,
                 }
 
-            processed_ancestry_data.extend(process_table_with_limit(
+            # Process Ancestry tree data
+            tree_data = process_table_with_limit(
                 session, Ancestry_TreeData, filtered_ids['Ancestry_TreeData'],
                 process_treedata, limit
-            ))
+            )
 
+            processed_ancestry_data.extend(tree_data)
+
+        # Check if Ancestry_ICW should be processed
         if ancestry_icw and filtered_ids.get('Ancestry_ICW'):
             def process_icw(icw):
+                match_tree = session.query(Ancestry_matchTrees).filter_by(matchid=icw.matchid).first()
+                person_id = match_tree.personId if match_tree else None
                 return {
-                    'matchid': icw.matchid,
-                    'icwid': icw.icwid,
+                    'PersonID': person_id,
+                    'testGuid': icw.matchid,
+                    'matchGuid': icw.icwid,
                     'created_date': icw.created_date,
                     'sharedCM': icw.sharedCentimorgans,
                     'confidence': icw.confidence,
@@ -310,11 +333,15 @@ def process_ancestry(session: Session, filtered_ids):
                     'numSharedSegments': icw.numSharedSegments,
                 }
 
-            processed_ancestry_data.extend(process_table_with_limit(
+            # Process Ancestry ICW data
+            icw_data = process_table_with_limit(
                 session, Ancestry_ICW, filtered_ids['Ancestry_ICW'],
                 process_icw, limit
-            ))
+            )
 
+            processed_ancestry_data.extend(icw_data)
+
+        # Check if Ancestry_matchethnicity should be processed
         if ancestry_matchethnicity and filtered_ids.get('Ancestry_matchEthnicity'):
             def process_matchethnicity(ethnicity):
                 return {
@@ -327,11 +354,15 @@ def process_ancestry(session: Session, filtered_ids):
                     'version': ethnicity.version,
                 }
 
-            processed_ancestry_data.extend(process_table_with_limit(
+            # Process Ancestry match ethnicity data
+            match_ethnicity_data = process_table_with_limit(
                 session, Ancestry_matchEthnicity, filtered_ids['Ancestry_matchEthnicity'],
                 process_matchethnicity, limit
-            ))
+            )
 
+            processed_ancestry_data.extend(match_ethnicity_data)
+
+        # Check if Ancestry_ancestorcouple should be processed
         if ancestry_ancestorcouple and filtered_ids.get('AncestryAncestorCouple'):
             def process_ancestorcouple(couple):
                 return {
@@ -370,10 +401,14 @@ def process_ancestry(session: Session, filtered_ids):
                     'MotherRelationshipFromSampleToMatch': couple.MotherRelationshipFromSampleToMatch
                 }
 
-            processed_ancestry_data.extend(process_table_with_limit(
+            # Process Ancestry ancestor couple data
+            ancestor_couple_data = process_table_with_limit(
                 session, AncestryAncestorCouple, filtered_ids['AncestryAncestorCouple'],
                 process_ancestorcouple, limit
-            ))
+            )
+
+            processed_ancestry_data.extend(ancestor_couple_data)
+
 
     except Exception as e:
         logger.error(f"Error processing Ancestry data: {e}")
@@ -775,8 +810,8 @@ def insert_dna(dna_rm_session: Session, processed_data, batch_size=1000):
             else:
                 # Create new record in DNATable
                 dna_data = {
-                    'ID1': data.get('ID1', None),
-                    'ID2': data.get('ID2', None),
+                    'ID1': data.get('testGuid', None),
+                    'ID2': data.get('matchGuid', None),
                     'Label1': data.get('Label1', None),
                     'Label2': data.get('Label2', None),
                     'DNAProvider': data.get('DNAProvider', None),
@@ -820,45 +855,55 @@ def insert_event(event_rm_session: Session, processed_data, batch_size=1000):
         processed_count = 0
 
         for data in processed_data:
-            # Check if an event record already exists for the given OwnerID and EventType
-            existing_event = event_rm_session.query(EventTable).filter_by(
-                OwnerID=data['OwnerID'], EventType=data['EventType']).first()
+            try:
+                # Ensure 'OwnerID' and 'EventType' exist in data
+                if 'OwnerID' not in data:
+                    logger.warning(f"Missing required keys in data: {data}")
+                    continue  # Skip processing this data item
 
-            if existing_event:
-                # Update existing record
-                for key, value in data.items():
-                    setattr(existing_event, key, value)
-                existing_event.UTCModDate = func.julianday('now') - 2415018.5
-                logger.info(
-                    f"Updated existing event record for OwnerID: {data['OwnerID']} and EventType: {data['EventType']}")
-            else:
-                # Create new record in EventTable
-                event_data = {
-                    'EventType': data.get('EventType', None),
-                    'OwnerType': 1,
-                    'OwnerID': data.get('OwnerID', None),
-                    'FamilyID': data.get('FamilyID', None),
-                    'PlaceID': data.get('PlaceID', None),
-                    'SiteID': data.get('SiteID', None),
-                    'Date': data.get('Date', None),
-                    'SortDate': data.get('SortDate', None),
-                    'IsPrimary': data.get('IsPrimary', None),
-                    'IsPrivate': data.get('IsPrivate', None),
-                    'Proof': data.get('Proof', None),
-                    'Status': data.get('Status', None),
-                    'Sentence': data.get('Sentence', None),
-                    'Details': data.get('Details', None),
-                    'Note': data.get('Note', None),
-                    'UTCModDate': func.julianday('now') - 2415018.5,
-                }
-                new_event = EventTable(**event_data)
-                event_rm_session.add(new_event)
-                logger.info(
-                    f"Inserted new event record for OwnerID: {data['OwnerID']} and EventType: {data['EventType']}")
+                # Check if an event record already exists for the given OwnerID and EventType
+                existing_event = event_rm_session.query(EventTable).filter_by(
+                    OwnerID=data['OwnerID'], EventType=data['EventType']).first()
 
-            processed_count += 1
-            if processed_count % batch_size == 0:
-                event_rm_session.flush()
+                if existing_event:
+                    # Update existing record
+                    for key, value in data.items():
+                        setattr(existing_event, key, value)
+                    existing_event.UTCModDate = func.julianday('now') - 2415018.5
+                    logger.info(
+                        f"Updated existing event record for OwnerID: {data['OwnerID']} "
+                        f"and EventType: {data['EventType']}")
+                else:
+                    # Create new record in EventTable
+                    event_data = {
+                        'EventType': data.get('EventType', None),
+                        'OwnerType': 1,
+                        'OwnerID': data.get('match_trees', {}).get('personId', None),
+                        'FamilyID': data.get('FamilyID', None),
+                        'PlaceID': data.get('PlaceID', None),
+                        'SiteID': data.get('SiteID', None),
+                        'Date': data.get('Date', None),
+                        'SortDate': data.get('SortDate', None),
+                        'IsPrimary': data.get('IsPrimary', None),
+                        'IsPrivate': data.get('IsPrivate', None),
+                        'Proof': data.get('Proof', None),
+                        'Status': data.get('Status', None),
+                        'Sentence': data.get('Sentence', None),
+                        'Details': data.get('Details', None),
+                        'Note': data.get('Note', None),
+                        'UTCModDate': func.julianday('now') - 2415018.5,
+                    }
+                    new_event = EventTable(**event_data)
+                    event_rm_session.add(new_event)
+                    logger.info(
+                        f"Inserted new event record for OwnerID: {data['OwnerID']} and EventType: {data['EventType']}")
+
+                processed_count += 1
+                if processed_count % batch_size == 0:
+                    event_rm_session.flush()
+
+            except Exception as inner_e:
+                logger.error(f"Error processing data {data}: {inner_e}")
 
         event_rm_session.commit()
         logger.info(f"Processed {processed_count} event records.")
@@ -1166,7 +1211,7 @@ def main():
             # insert_event(rm_session, processed_data)
             # insert_child(rm_session, processed_data)
             # insert_family(rm_session, processed_data)
-            # insert_dna(rm_session, processed_data)
+            insert_dna(rm_session, processed_data)
             # insert_place(rm_session, processed_data)
             # insert_url(rm_session, processed_data)
             # insert_group(rm_session, processed_data)
