@@ -12,7 +12,7 @@ from setup_logging import setup_logging
 # Remote Imports
 import logging
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError, MultipleResultsFound
 import uuid
 
 ancestry_base = Ancestry_Base()
@@ -63,22 +63,72 @@ def generate_unique_id(*args) -> str:
 
 
 def check_for_duplicates(session: Session, unique_id: str, **kwargs):
-    logger = logging.getLogger('get_or_create_person')
+    logging.getLogger('get_or_create_person')
     try:
         person = session.query(PersonTable).filter_by(UniqueID=unique_id).first()
         if person:
             for key, value in kwargs.items():
                 setattr(person, key, value)
-            logger.info(f"Updated existing person: {unique_id}")
+            logging.info(f"Updated existing person: {unique_id}")
         else:
             person = PersonTable(UniqueID=unique_id, **kwargs)
             session.add(person)
-            logger.info(f"Created new person: {unique_id}")
+            logging.info(f"Created new person: {unique_id}")
         return person
     except SQLAlchemyError as dup_e:
-        logger.error(f"Error in get_or_create_person for {unique_id}: {dup_e}")
+        logging.error(f"Error in get_or_create_person for {unique_id}: {dup_e}")
         session.rollback()
         return None
+
+
+def process_and_import_profiles(rm_session: Session, selected_kits):
+    for kit_details in selected_kits:
+        id_value, guid_value, name_given, name_surname = kit_details
+
+        logging.info(f"Processing kit: {id_value}, GUID: {guid_value}, Name: {name_given} {name_surname}")
+
+        try:
+            # Merge into PersonTable (update or create)
+            profile_person_table = PersonTable(
+                UniqueID=guid_value,
+                Color=1,
+            )
+            rm_session.merge(profile_person_table)
+            rm_session.commit()
+
+            # Query to get the PersonID for the merged record
+            person_record = rm_session.query(PersonTable).filter_by(UniqueID=guid_value).one_or_none()
+            if person_record:
+                person_id = person_record.PersonID
+            else:
+                logging.error(f"No Person record found for UniqueID: {guid_value}")
+                raise ValueError(f"No Person record found for UniqueID: {guid_value}")
+
+            # Insert into NameTable with correct OwnerID (PersonID)
+            profile_name_table = NameTable(
+                OwnerID=person_id,
+                Given=name_given,
+                Surname=name_surname,
+                IsPrimary=1,
+                NameType=6,
+            )
+            rm_session.add(profile_name_table)
+
+        except MultipleResultsFound:
+            rm_session.commit()
+            profile_person_table = PersonTable(
+                UniqueID=guid_value,
+                Color=1,
+            )
+            rm_session.merge(profile_person_table)
+            rm_session.commit()  # Commit the merged record
+
+        except Exception as e:
+            logging.error(f"Error processing kit: {id_value}, GUID: {guid_value}, Name: {name_given} {name_surname}")
+            logging.exception(e)  # Log the full exception traceback for debugging
+
+    rm_session.commit()
+    logging.info(f"Inserted or updated DNA Kits and Profiles.")
 
 
 def filter_selected_kits(filter_session: Session, f_selected_kits):
@@ -86,8 +136,8 @@ def filter_selected_kits(filter_session: Session, f_selected_kits):
         ancestry_ancestorcouple, ancestry_matchethnicity
     global ftdna_matches2, ftdna_chromo2, ftdna_icw2, dg_tree, dg_individual
     global mh_match, mh_ancestors, mh_chromo, mh_icw, mh_tree
-    logger = logging.getLogger('filter_selected_kits')
-    logger.info("Filtering selected kits...")
+    logging.getLogger('filter_selected_kits')
+    logging.info("Filtering selected kits...")
 
     selected_guids = [kit[1] for kit in f_selected_kits]
     test_ids = {
@@ -189,7 +239,7 @@ def filter_selected_kits(filter_session: Session, f_selected_kits):
                 test_ids['MH_Tree'] = [tree.Id for tree in mh_tree_data]
 
     except Exception as filter_e:
-        logger.error(f"Error filtering selected kits: {filter_e}")
+        logging.error(f"Error filtering selected kits: {filter_e}")
         raise
 
     return test_ids
@@ -197,8 +247,8 @@ def filter_selected_kits(filter_session: Session, f_selected_kits):
 
 def process_ancestry(session: Session, filtered_ids):
     global limit
-    logger = logging.getLogger('process_ancestry')
-    logger.info("Processing Ancestry data...")
+    logging.getLogger('process_ancestry')
+    logging.info("Processing Ancestry data...")
 
     processed_ancestry_data = []
 
@@ -282,7 +332,7 @@ def process_ancestry(session: Session, filtered_ids):
                     'fatherId': tree.fatherId,
                     'motherId': tree.motherId,
                     'DNAProvider': 2,
-                    'created_date': tree.created_date,
+                    'Date': tree.created_date,
                     'IsPrimary': 1,
                     'NameType': 2,
                 }
@@ -326,7 +376,7 @@ def process_ancestry(session: Session, filtered_ids):
                     'PersonID': person_id,
                     'testGuid': icw.matchid,
                     'matchGuid': icw.icwid,
-                    'created_date': icw.created_date,
+                    'Date': icw.created_date,
                     'sharedCM': icw.sharedCentimorgans,
                     'confidence': icw.confidence,
                     'meiosis': icw.meiosis,
@@ -349,7 +399,7 @@ def process_ancestry(session: Session, filtered_ids):
                     'matchGuid': ethnicity.matchGuid,
                     'ethnicregions': ethnicity.ethnicregions,
                     'ethnictraceregions': ethnicity.ethnictraceregions,
-                    'created_date': ethnicity.created_date,
+                    'Date': ethnicity.created_date,
                     'percent': ethnicity.percent,
                     'version': ethnicity.version,
                 }
@@ -409,17 +459,16 @@ def process_ancestry(session: Session, filtered_ids):
 
             processed_ancestry_data.extend(ancestor_couple_data)
 
-
     except Exception as e:
-        logger.error(f"Error processing Ancestry data: {e}")
+        logging.error(f"Error processing Ancestry data: {e}")
 
     return processed_ancestry_data
 
 
 def process_ftdna(session: Session, filtered_ids):
     global limit
-    logger = logging.getLogger('process_ftdna')
-    logger.info("Processing FTDNA data...")
+    logging.getLogger('process_ftdna')
+    logging.info("Processing FTDNA data...")
 
     processed_ftdna_data = []
 
@@ -521,15 +570,15 @@ def process_ftdna(session: Session, filtered_ids):
             ))
 
     except Exception as e:
-        logger.error(f"Error processing FTDNA data: {e}")
+        logging.error(f"Error processing FTDNA data: {e}")
 
     return processed_ftdna_data
 
 
 def process_mh(session: Session, filtered_ids):
     global limit
-    logger = logging.getLogger('process_mh')
-    logger.info("Processing MyHeritage data...")
+    logging.getLogger('process_mh')
+    logging.info("Processing MyHeritage data...")
 
     processed_mh_data = []
 
@@ -627,7 +676,7 @@ def process_mh(session: Session, filtered_ids):
                     'unique_id': generate_unique_id(tree.treeurl),
                     'color': 27,
                     'treeurl': tree.treeurl,
-                    'created_date': tree.created_date,
+                    'Date': tree.created_date,
                     'updated_date': tree.updated_date,
                 }
 
@@ -637,13 +686,13 @@ def process_mh(session: Session, filtered_ids):
             ))
 
     except Exception as e:
-        logger.error(f"Error processing MyHeritage data: {e}")
+        logging.error(f"Error processing MyHeritage data: {e}")
 
     return processed_mh_data
 
 
 def insert_fact_type(fact_rm_session: Session):
-    logger = logging.getLogger('insert_fact_type')
+    logging.getLogger('insert_fact_type')
 
     try:
         # Check if Fact Type 'DNA Kit' already exists
@@ -664,7 +713,7 @@ def insert_fact_type(fact_rm_session: Session):
                 UTCModDate=func.julianday('now') - 2415018.5,
             )
             fact_rm_session.add(new_fact_type)
-            logger.info("Fact Type 'DNA Kit' inserted into FactTypeTable.")
+            logging.info("Fact Type 'DNA Kit' inserted into FactTypeTable.")
 
         else:
             # Update existing Fact Type 'DNA Kit'
@@ -679,10 +728,10 @@ def insert_fact_type(fact_rm_session: Session):
             fact_type.Flags = 2147483647
             fact_type.UTCModDate = func.julianday('now') - 2415018.5
             fact_rm_session.commit()
-            logger.info("Fact Type 'DNA Kit' updated in FactTypeTable.")
+            logging.info("Fact Type 'DNA Kit' updated in FactTypeTable.")
 
     except Exception as e:
-        logger.error(f"Error inserting or updating Fact Type 'DNA Kit' in FactTypeTable: {e}")
+        logging.error(f"Error inserting or updating Fact Type 'DNA Kit' in FactTypeTable: {e}")
         fact_rm_session.rollback()
         raise
     finally:
@@ -690,8 +739,8 @@ def insert_fact_type(fact_rm_session: Session):
 
 
 def insert_person(person_rm_session: Session, processed_data, batch_size=1000):
-    logger = logging.getLogger('insert_person')
-    logger.info("Inserting or updating individuals in PersonTable...")
+    logging.getLogger('insert_person')
+    logging.info("Inserting or updating individuals in PersonTable...")
 
     try:
         processed_count = 0
@@ -724,9 +773,9 @@ def insert_person(person_rm_session: Session, processed_data, batch_size=1000):
                 person_rm_session.flush()
 
         person_rm_session.commit()
-        logger.info(f"Processed {processed_count} individuals.")
+        logging.info(f"Processed {processed_count} individuals.")
     except Exception as e:
-        logger.error(f"Error inserting or updating PersonTable: {e}")
+        logging.error(f"Error inserting or updating PersonTable: {e}")
         person_rm_session.rollback()
         raise  # Re-raise the exception to handle it elsewhere if needed
     finally:
@@ -734,11 +783,11 @@ def insert_person(person_rm_session: Session, processed_data, batch_size=1000):
 
 
 def insert_name(name_rm_session: Session, processed_data, batch_size=1000):
-    logger = logging.getLogger('insert_name')
-    logger.info("Inserting or updating names in NameTable...")
+    logging.getLogger('insert_name')
+    logging.info("Inserting or updating names in NameTable...")
 
     if name_rm_session is None:
-        logger.error("Invalid name_rm_session object provided")
+        logging.error("Invalid name_rm_session object provided")
         raise ValueError("A valid Session object must be provided")
 
     try:
@@ -747,7 +796,7 @@ def insert_name(name_rm_session: Session, processed_data, batch_size=1000):
             # Get PersonID from processed_data
             person_id = data.get('PersonID')
             if not person_id:
-                logger.warning(f"PersonID not found for data: {data}")
+                logging.warning(f"PersonID not found for data: {data}")
                 continue
 
             # Map processed_data to NameTable columns
@@ -763,7 +812,8 @@ def insert_name(name_rm_session: Session, processed_data, batch_size=1000):
             }
 
             # Check if a name record already exists for this person and name type
-            existing_name = name_rm_session.query(NameTable).filter_by(OwnerID=name_data['OwnerID'], NameType=2).first()
+            existing_name = name_rm_session.query(NameTable).filter_by(OwnerID=name_data['OwnerID'],
+                                                                       NameType=name_data['NameType']).first()
 
             if existing_name:
                 # Update existing record
@@ -779,10 +829,10 @@ def insert_name(name_rm_session: Session, processed_data, batch_size=1000):
                 name_rm_session.flush()
 
         name_rm_session.commit()
-        logger.info(f"Processed {processed_count} name records.")
+        logging.info(f"Processed {processed_count} name records.")
 
     except Exception as e:
-        logger.error(f"Error inserting or updating NameTable: {e}")
+        logging.error(f"Error inserting or updating NameTable: {e}")
         name_rm_session.rollback()
         raise
 
@@ -790,57 +840,81 @@ def insert_name(name_rm_session: Session, processed_data, batch_size=1000):
         name_rm_session.close()
 
 
-def insert_dna(dna_rm_session: Session, processed_data, batch_size=1000):
-    logger = logging.getLogger('insert_dna')
-    logger.info("Inserting or updating DNA data in DNATable...")
+def insert_dna(dna_rm_session: Session, processed_data, match_groups, icw, batch_size=1000):
+    logging.getLogger('insert_dna')
+    logging.info("Inserting or updating DNA data in DNATable...")
 
     try:
         processed_count = 0
 
         for data in processed_data:
+            if data in match_groups:
+                # Data is from match_groups
+                match_tree_1 = dna_rm_session.query(Ancestry_matchTrees).filter_by(matchid=data['testGuid']).first()
+                person_id_1 = match_tree_1.personId if match_tree_1 else None
+
+                match_tree_2 = dna_rm_session.query(Ancestry_matchTrees).filter_by(matchid=data['matchGuid']).first()
+                person_id_2 = match_tree_2.personId if match_tree_2 else None
+
+                label1 = data['matchTestDisplayName']
+                label2 = data['matchGuid']
+                note = f"{data['matchTestDisplayName']} is a match with {data['matchGuid']}"
+            elif data in icw:
+                # Data is from icw
+                match_tree_1 = dna_rm_session.query(Ancestry_matchTrees).filter_by(matchid=data['matchid']).first()
+                person_id_1 = match_tree_1.personId if match_tree_1 else None
+
+                match_tree_2 = dna_rm_session.query(Ancestry_matchTrees).filter_by(matchid=data['icwid']).first()
+                person_id_2 = match_tree_2.personId if match_tree_2 else None
+
+                label1 = data['matchid']
+                label2 = data['icwid']
+                note = f"{data['matchid']} is a match with {data['icwid']}"
+            else:
+                logging.warning(f"Unrecognized data format: {data}")
+                continue
+
+            # Construct dna_data for insertion
+            dna_data = {
+                'ID1': person_id_1,
+                'ID2': person_id_2,
+                'Label1': label1,
+                'Label2': label2,
+                'DNAProvider': data.get('DNAProvider', None),
+                'SharedCM': data.get('SharedCM', None),
+                'SharedPercent': round(data.get('SharedCM', 0) / 69, 2) if data.get('SharedCM') else None,  # Example
+                # calculation for SharedPercent
+                'LargeSeg': data.get('LargeSeg', None),
+                'SharedSegs': data.get('SharedSegs', None),
+                'Date': data.get('Date', None),
+                'Note': note,
+                'UTCModDate': func.julianday('now') - 2415018.5,
+            }
+
             # Check if a DNA record already exists for the given ID1 and ID2
-            existing_dna = dna_rm_session.query(DNATable).filter_by(ID1=data['ID1'], ID2=data['ID2']).first()
+            existing_dna = dna_rm_session.query(DNATable).filter_by(ID1=person_id_1, ID2=person_id_2).first()
 
             if existing_dna:
                 # Update existing record
-                for key, value in data.items():
+                for key, value in dna_data.items():
                     setattr(existing_dna, key, value)
                 existing_dna.UTCModDate = func.julianday('now') - 2415018.5
-                logger.info(f"Updated existing DNA record for ID1: {data['ID1']} and ID2: {data['ID2']}")
+                logging.info(f"Updated existing DNA record for ID1: {person_id_1} and ID2: {person_id_2}")
             else:
                 # Create new record in DNATable
-                dna_data = {
-                    'ID1': data.get('testGuid', None),
-                    'ID2': data.get('matchGuid', None),
-                    'Label1': data.get('Label1', None),
-                    'Label2': data.get('Label2', None),
-                    'DNAProvider': data.get('DNAProvider', None),
-                    'SharedCM': data.get('SharedCM', None),
-                    'SharedPercent': data.get('SharedPercent', None),
-                    'LargeSeg': data.get('LargeSeg', None),
-                    'SharedSegs': data.get('SharedSegs', None),
-                    'Date': data.get('Date', None),
-                    'Relate1': data.get('Relate1', None),
-                    'Relate2': data.get('Relate2', None),
-                    'CommonAnc': data.get('CommonAnc', None),
-                    'CommonAncType': data.get('CommonAncType', None),
-                    'Verified': data.get('Verified', None),
-                    'Note': data.get('Note', None),
-                    'UTCModDate': func.julianday('now') - 2415018.5,
-                }
                 new_dna = DNATable(**dna_data)
                 dna_rm_session.add(new_dna)
-                logger.info(f"Inserted new DNA record for ID1: {data['ID1']} and ID2: {data['ID2']}")
+                logging.info(f"Inserted new DNA record for ID1: {person_id_1} and ID2: {person_id_2}")
 
             processed_count += 1
             if processed_count % batch_size == 0:
                 dna_rm_session.flush()
 
         dna_rm_session.commit()
-        logger.info(f"Processed {processed_count} DNA records.")
+        logging.info(f"Processed {processed_count} DNA records.")
 
     except Exception as e:
-        logger.error(f"Error inserting or updating DNATable: {e}")
+        logging.error(f"Error inserting or updating DNATable: {e}")
         dna_rm_session.rollback()
         raise
     finally:
@@ -848,8 +922,8 @@ def insert_dna(dna_rm_session: Session, processed_data, batch_size=1000):
 
 
 def insert_event(event_rm_session: Session, processed_data, batch_size=1000):
-    logger = logging.getLogger('insert_event')
-    logger.info("Inserting or updating events in EventTable...")
+    logging.getLogger('insert_event')
+    logging.info("Inserting or updating events in EventTable...")
 
     try:
         processed_count = 0
@@ -858,7 +932,7 @@ def insert_event(event_rm_session: Session, processed_data, batch_size=1000):
             try:
                 # Ensure 'OwnerID' and 'EventType' exist in data
                 if 'OwnerID' not in data:
-                    logger.warning(f"Missing required keys in data: {data}")
+                    logging.warning(f"Missing required keys in data: {data}")
                     continue  # Skip processing this data item
 
                 # Check if an event record already exists for the given OwnerID and EventType
@@ -870,7 +944,7 @@ def insert_event(event_rm_session: Session, processed_data, batch_size=1000):
                     for key, value in data.items():
                         setattr(existing_event, key, value)
                     existing_event.UTCModDate = func.julianday('now') - 2415018.5
-                    logger.info(
+                    logging.info(
                         f"Updated existing event record for OwnerID: {data['OwnerID']} "
                         f"and EventType: {data['EventType']}")
                 else:
@@ -895,7 +969,7 @@ def insert_event(event_rm_session: Session, processed_data, batch_size=1000):
                     }
                     new_event = EventTable(**event_data)
                     event_rm_session.add(new_event)
-                    logger.info(
+                    logging.info(
                         f"Inserted new event record for OwnerID: {data['OwnerID']} and EventType: {data['EventType']}")
 
                 processed_count += 1
@@ -903,13 +977,13 @@ def insert_event(event_rm_session: Session, processed_data, batch_size=1000):
                     event_rm_session.flush()
 
             except Exception as inner_e:
-                logger.error(f"Error processing data {data}: {inner_e}")
+                logging.error(f"Error processing data {data}: {inner_e}")
 
         event_rm_session.commit()
-        logger.info(f"Processed {processed_count} event records.")
+        logging.info(f"Processed {processed_count} event records.")
 
     except Exception as e:
-        logger.error(f"Error inserting or updating EventTable: {e}")
+        logging.error(f"Error inserting or updating EventTable: {e}")
         event_rm_session.rollback()
         raise
     finally:
@@ -917,8 +991,8 @@ def insert_event(event_rm_session: Session, processed_data, batch_size=1000):
 
 
 def insert_place(place_rm_session: Session, processed_data, batch_size=1000):
-    logger = logging.getLogger('insert_place')
-    logger.info("Inserting or updating places in PlaceTable...")
+    logging.getLogger('insert_place')
+    logging.info("Inserting or updating places in PlaceTable...")
 
     try:
         processed_count = 0
@@ -932,7 +1006,7 @@ def insert_place(place_rm_session: Session, processed_data, batch_size=1000):
                 for key, value in data.items():
                     setattr(existing_place, key, value)
                 existing_place.UTCModDate = func.julianday('now') - 2415018.5
-                logger.info(f"Updated existing place record for Name: {data['Name']}")
+                logging.info(f"Updated existing place record for Name: {data['Name']}")
             else:
                 # Create new record in PlaceTable
                 place_data = {
@@ -952,17 +1026,17 @@ def insert_place(place_rm_session: Session, processed_data, batch_size=1000):
                 }
                 new_place = PlaceTable(**place_data)
                 place_rm_session.add(new_place)
-                logger.info(f"Inserted new place record for Name: {data['Name']}")
+                logging.info(f"Inserted new place record for Name: {data['Name']}")
 
             processed_count += 1
             if processed_count % batch_size == 0:
                 place_rm_session.flush()
 
         place_rm_session.commit()
-        logger.info(f"Processed {processed_count} place records.")
+        logging.info(f"Processed {processed_count} place records.")
 
     except Exception as e:
-        logger.error(f"Error inserting or updating PlaceTable: {e}")
+        logging.error(f"Error inserting or updating PlaceTable: {e}")
         place_rm_session.rollback()
         raise
     finally:
@@ -970,8 +1044,8 @@ def insert_place(place_rm_session: Session, processed_data, batch_size=1000):
 
 
 def insert_child(child_rm_session: Session, processed_data, batch_size=1000):
-    logger = logging.getLogger('insert_child')
-    logger.info("Inserting or updating children in ChildTable...")
+    logging.getLogger('insert_child')
+    logging.info("Inserting or updating children in ChildTable...")
 
     try:
         processed_count = 0
@@ -986,7 +1060,7 @@ def insert_child(child_rm_session: Session, processed_data, batch_size=1000):
                 for key, value in data.items():
                     setattr(existing_child, key, value)
                 existing_child.UTCModDate = func.julianday('now') - 2415018.5
-                logger.info(
+                logging.info(
                     f"Updated existing child record for ChildID: {data['ChildID']} and FamilyID: {data['FamilyID']}")
             else:
                 # Create new record in ChildTable
@@ -1004,7 +1078,7 @@ def insert_child(child_rm_session: Session, processed_data, batch_size=1000):
                 }
                 new_child = ChildTable(**child_data)
                 child_rm_session.add(new_child)
-                logger.info(
+                logging.info(
                     f"Inserted new child record for ChildID: {data['ChildID']} and FamilyID: {data['FamilyID']}")
 
             processed_count += 1
@@ -1012,10 +1086,10 @@ def insert_child(child_rm_session: Session, processed_data, batch_size=1000):
                 child_rm_session.flush()
 
         child_rm_session.commit()
-        logger.info(f"Processed {processed_count} child records.")
+        logging.info(f"Processed {processed_count} child records.")
 
     except Exception as e:
-        logger.error(f"Error inserting or updating ChildTable: {e}")
+        logging.error(f"Error inserting or updating ChildTable: {e}")
         child_rm_session.rollback()
         raise
     finally:
@@ -1023,8 +1097,8 @@ def insert_child(child_rm_session: Session, processed_data, batch_size=1000):
 
 
 def insert_family(family_rm_session: Session, processed_data, batch_size=1000):
-    logger = logging.getLogger('insert_family')
-    logger.info("Inserting or updating family data in FamilyTable...")
+    logging.getLogger('insert_family')
+    logging.info("Inserting or updating family data in FamilyTable...")
 
     try:
         processed_count = 0
@@ -1039,7 +1113,7 @@ def insert_family(family_rm_session: Session, processed_data, batch_size=1000):
                 for key, value in data.items():
                     setattr(existing_family, key, value)
                 existing_family.UTCModDate = func.julianday('now') - 2415018.5
-                logger.info(f"Updated existing family record for FamilyID: {data['FamilyID']}")
+                logging.info(f"Updated existing family record for FamilyID: {data['FamilyID']}")
             else:
                 # Create new record in FamilyTable
                 family_data = {
@@ -1062,17 +1136,17 @@ def insert_family(family_rm_session: Session, processed_data, batch_size=1000):
                 }
                 new_family = FamilyTable(**family_data)
                 family_rm_session.add(new_family)
-                logger.info(f"Inserted new family record for FamilyID: {data['FamilyID']}")
+                logging.info(f"Inserted new family record for FamilyID: {data['FamilyID']}")
 
             processed_count += 1
             if processed_count % batch_size == 0:
                 family_rm_session.flush()
 
         family_rm_session.commit()
-        logger.info(f"Processed {processed_count} family records.")
+        logging.info(f"Processed {processed_count} family records.")
 
     except Exception as e:
-        logger.error(f"Error inserting or updating FamilyTable: {e}")
+        logging.error(f"Error inserting or updating FamilyTable: {e}")
         family_rm_session.rollback()
         raise
     finally:
@@ -1080,8 +1154,8 @@ def insert_family(family_rm_session: Session, processed_data, batch_size=1000):
 
 
 def insert_group(group_rm_session: Session, processed_data, batch_size=1000):
-    logger = logging.getLogger('insert_group')
-    logger.info("Inserting or updating group data in GroupTable...")
+    logging.getLogger('insert_group')
+    logging.info("Inserting or updating group data in GroupTable...")
 
     try:
         processed_count = 0
@@ -1096,7 +1170,7 @@ def insert_group(group_rm_session: Session, processed_data, batch_size=1000):
                 for key, value in data.items():
                     setattr(existing_group, key, value)
                 existing_group.UTCModDate = func.julianday('now') - 2415018.5
-                logger.info(f"Updated existing group record for GroupID: {data['GroupID']}")
+                logging.info(f"Updated existing group record for GroupID: {data['GroupID']}")
             else:
                 # Create new record in GroupTable
                 group_data = {
@@ -1107,17 +1181,17 @@ def insert_group(group_rm_session: Session, processed_data, batch_size=1000):
                 }
                 new_group = GroupTable(**group_data)
                 group_rm_session.add(new_group)
-                logger.info(f"Inserted new group record for GroupID: {data['GroupID']}")
+                logging.info(f"Inserted new group record for GroupID: {data['GroupID']}")
 
             processed_count += 1
             if processed_count % batch_size == 0:
                 group_rm_session.flush()
 
         group_rm_session.commit()
-        logger.info(f"Processed {processed_count} group records.")
+        logging.info(f"Processed {processed_count} group records.")
 
     except Exception as e:
-        logger.error(f"Error inserting or updating GroupTable: {e}")
+        logging.error(f"Error inserting or updating GroupTable: {e}")
         group_rm_session.rollback()
         raise
     finally:
@@ -1125,8 +1199,8 @@ def insert_group(group_rm_session: Session, processed_data, batch_size=1000):
 
 
 def insert_url(url_rm_session: Session, processed_data, batch_size=1000):
-    logger = logging.getLogger('insert_url')
-    logger.info("Inserting or updating URL data in URLTable...")
+    logging.getLogger('insert_url')
+    logging.info("Inserting or updating URL data in URLTable...")
 
     try:
         processed_count = 0
@@ -1141,7 +1215,7 @@ def insert_url(url_rm_session: Session, processed_data, batch_size=1000):
                 for key, value in data.items():
                     setattr(existing_url, key, value)
                 existing_url.UTCModDate = func.julianday('now') - 2415018.5
-                logger.info(
+                logging.info(
                     f"Updated existing URL record for OwnerType {data['OwnerType']} and OwnerID {data['OwnerID']}")
             else:
                 # Create new record in URLTable
@@ -1156,17 +1230,17 @@ def insert_url(url_rm_session: Session, processed_data, batch_size=1000):
                 }
                 new_url = URLTable(**url_data)
                 url_rm_session.add(new_url)
-                logger.info(f"Inserted new URL record for OwnerType {data['OwnerType']} and OwnerID {data['OwnerID']}")
+                logging.info(f"Inserted new URL record for OwnerType {data['OwnerType']} and OwnerID {data['OwnerID']}")
 
             processed_count += 1
             if processed_count % batch_size == 0:
                 url_rm_session.flush()
 
         url_rm_session.commit()
-        logger.info(f"Processed {processed_count} URL records.")
+        logging.info(f"Processed {processed_count} URL records.")
 
     except Exception as e:
-        logger.error(f"Error inserting or updating URLTable: {e}")
+        logging.error(f"Error inserting or updating URLTable: {e}")
         url_rm_session.rollback()
         raise
     finally:
@@ -1197,7 +1271,7 @@ def main():
             logging.info(f"Type: {kit[0]}, GUID: {kit[1]}, Name: {kit[2]} {kit[3]}")
 
         filtered_ids = filter_selected_kits(dg_session, selected_kits)
-
+        process_and_import_profiles(rm_session, selected_kits)
         # Process different providers and combine into processed_data.
         processed_ancestry_data = process_ancestry(dg_session, filtered_ids)
         processed_ftdna_data = process_ftdna(dg_session, filtered_ids)
@@ -1211,7 +1285,7 @@ def main():
             # insert_event(rm_session, processed_data)
             # insert_child(rm_session, processed_data)
             # insert_family(rm_session, processed_data)
-            insert_dna(rm_session, processed_data)
+            # insert_dna(rm_session, processed_data)
             # insert_place(rm_session, processed_data)
             # insert_url(rm_session, processed_data)
             # insert_group(rm_session, processed_data)
