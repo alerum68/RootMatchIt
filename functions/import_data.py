@@ -271,7 +271,6 @@ def process_ancestry(session: Session, filtered_ids):
                 given, surname = (name.split()[0], name.split()[-1]) if len(name.split()) > 1 else (name, "")
 
                 match_group = {
-                    'PersonID': person_id,
                     'unique_id': group.matchGuid,
                     'sex': 1 if group.subjectGender == 'F' else 0 if group.subjectGender == 'M' else 2,
                     'color': 25,
@@ -297,6 +296,10 @@ def process_ancestry(session: Session, filtered_ids):
                     'NameType': 6,
                 }
 
+                # Only add PersonID to the dictionary if it's not None
+                if person_id is not None:
+                    match_group['PersonID'] = person_id
+
                 return match_group
 
             # Process Ancestry match groups
@@ -310,6 +313,12 @@ def process_ancestry(session: Session, filtered_ids):
 
         if ancestry_matchtrees and filtered_ids.get('Ancestry_matchTrees'):
             def process_matchtree(tree):
+                try:
+                    person_id = abs(int(tree.personId)) if tree.personId and tree.personId.isdigit() else None
+                except ValueError:
+                    logging.warning(f"Invalid personId value: {tree.personId}. Skipping.")
+                    return None
+
                 sex_value = 2
                 father_match = session.query(Ancestry_matchTrees).filter(
                     Ancestry_matchTrees.fatherId == tree.personId
@@ -323,8 +332,14 @@ def process_ancestry(session: Session, filtered_ids):
                     if mother_match:
                         sex_value = 1  # Female if found in motherId
 
+                # Generate unique_id based on relid condition
+                if tree.relid == '1':
+                    unique_id = tree.matchid
+                else:
+                    unique_id = generate_unique_id(tree.given, tree.surname, tree.birthdate)
+
                 return {
-                    'unique_id': generate_unique_id(tree.given, tree.surname, tree.birthdate),
+                    'unique_id': unique_id,
                     'sex': sex_value,
                     'color': 24,
                     'matchid': tree.matchid,
@@ -335,7 +350,7 @@ def process_ancestry(session: Session, filtered_ids):
                     'birthplace': tree.birthplace,
                     'deathplace': tree.deathplace,
                     'relid': tree.relid,
-                    'personId': tree.personId,
+                    'personId': person_id,
                     'fatherId': tree.fatherId,
                     'motherId': tree.motherId,
                     'DNAProvider': 2,
@@ -455,7 +470,8 @@ def process_ancestry(session: Session, filtered_ids):
                     'MotherNotFound': couple.MotherNotFound,
                     'MotherVeiled': couple.MotherVeiled,
                     'MotherRelationshipToSampleId': couple.MotherRelationshipToSampleId,
-                    'MotherRelationshipFromSampleToMatch': couple.MotherRelationshipFromSampleToMatch
+                    'MotherRelationshipFromSampleToMatch': couple.MotherRelationshipFromSampleToMatch,
+                    'date': couple.date,
                 }
 
             # Process Ancestry ancestor couple data
@@ -467,7 +483,7 @@ def process_ancestry(session: Session, filtered_ids):
             processed_ancestry_data.extend(ancestor_couple_data)
 
     except Exception as e:
-        logging.error(f"Error processing Ancestry data: {e}")
+        logging.error(f"An error occurred during processing Ancestry data: {str(e)}")
 
     return processed_ancestry_data
 
@@ -749,42 +765,57 @@ def insert_person(person_rm_session: Session, processed_data, batch_size=1000):
     logging.getLogger('insert_person')
     logging.info("Inserting or updating individuals in PersonTable...")
 
+    if person_rm_session is None:
+        logging.error("Invalid person_rm_session object provided")
+        raise ValueError("A valid Session object must be provided")
+
     try:
         processed_count = 0
-
         for data in processed_data:
-            # Check if the person with UniqueID already exists in the database
-            person = person_rm_session.query(PersonTable).filter_by(UniqueID=data['unique_id']).first()
+            # Get PersonID from processed_data, checking both 'PersonID' and 'personId'
+            person_id = data.get('PersonID') or data.get('personId')
 
-            if not person:
-                # Create a new person if it doesn't exist
-                person = PersonTable(
-                    UniqueID=data['unique_id'],
-                    Sex=data['sex'],
-                    Color=data['color'],
-                    UTCModDate=func.julianday('now') - 2415018.5
-                )
-                person_rm_session.add(person)
-                person_rm_session.flush()  # Ensure the person is written to get the ID
+            # Map processed_data to PersonTable columns
+            person_data = {
+                'UniqueID': data.get('unique_id', ''),
+                'Sex': data.get('sex', ''),
+                'Color': data.get('color', ''),
+                'UTCModDate': func.julianday('now') - 2415018.5,
+            }
+
+            # Add PersonID to person_data only if it's not None
+            if person_id is not None:
+                person_data['PersonID'] = person_id
+
+            if person_id is not None:
+                # Check if a person record already exists for this PersonID
+                existing_person = person_rm_session.query(PersonTable).filter_by(PersonID=person_id).first()
+
+                if existing_person:
+                    # Update existing record
+                    for key, value in person_data.items():
+                        setattr(existing_person, key, value)
+                else:
+                    # Create new record with PersonID
+                    new_person = PersonTable(**person_data)
+                    person_rm_session.add(new_person)
             else:
-                # Update existing person's attributes
-                person.Sex = data['sex']
-                person.Color = data['color']
-                person.UTCModDate = func.julianday('now') - 2415018.5
-
-            # Retrieve and assign the generated PersonID
-            data['PersonID'] = person.PersonID
+                # Create new record without PersonID
+                new_person = PersonTable(**person_data)
+                person_rm_session.add(new_person)
 
             processed_count += 1
             if processed_count % batch_size == 0:
                 person_rm_session.flush()
 
         person_rm_session.commit()
-        logging.info(f"Processed {processed_count} individuals.")
+        logging.info(f"Processed {processed_count} person records.")
+
     except Exception as e:
         logging.error(f"Error inserting or updating PersonTable: {e}")
         person_rm_session.rollback()
-        raise  # Re-raise the exception to handle it elsewhere if needed
+        raise
+
     finally:
         person_rm_session.close()
 
@@ -1288,7 +1319,7 @@ def main():
         try:
             insert_fact_type(rm_session)
             insert_person(rm_session, processed_data)
-            insert_name(rm_session, processed_data)
+            # insert_name(rm_session, processed_data)
             # insert_event(rm_session, processed_data)
             # insert_child(rm_session, processed_data)
             # insert_family(rm_session, processed_data)
