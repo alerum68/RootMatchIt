@@ -12,7 +12,7 @@ from setup_logging import setup_logging
 # Remote Imports
 import logging
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import SQLAlchemyError, MultipleResultsFound
+from sqlalchemy.exc import SQLAlchemyError, MultipleResultsFound, NoResultFound
 import uuid
 
 ancestry_base = Ancestry_Base()
@@ -88,47 +88,54 @@ def process_and_import_profiles(rm_session: Session, selected_kits):
         logging.info(f"Processing kit: {id_value}, GUID: {guid_value}, Name: {name_given} {name_surname}")
 
         try:
-            # Merge into PersonTable (update or create)
-            profile_person_table = PersonTable(
-                UniqueID=guid_value,
-                Color=1,
-            )
-            rm_session.merge(profile_person_table)
-            rm_session.commit()
+            # Query to get the PersonTable record by UniqueID
+            try:
+                person_record = rm_session.query(PersonTable).filter_by(UniqueID=guid_value).one()
+                logging.info(f"Found existing record in PersonTable for UniqueID: {guid_value}.")
+            except NoResultFound:
+                # Create a new PersonTable entry if none exists
+                person_record = PersonTable(
+                    UniqueID=guid_value,
+                    Color=1,
+                )
+                rm_session.add(person_record)
+                rm_session.commit()
+                logging.info(f"Inserted new record in PersonTable for UniqueID: {guid_value}")
 
-            # Query to get the PersonID for the merged record
-            person_record = rm_session.query(PersonTable).filter_by(UniqueID=guid_value).one_or_none()
-            if person_record:
-                person_id = person_record.PersonID
+            # Retrieve PersonID
+            person_id = person_record.PersonID
+
+            # Check if a name record already exists for this person and name type
+            existing_name = rm_session.query(NameTable).filter_by(OwnerID=person_id, NameType=6).first()
+
+            if existing_name:
+                # Update existing record
+                existing_name.Given = name_given
+                existing_name.Surname = name_surname
+                existing_name.IsPrimary = 1
             else:
-                logging.error(f"No Person record found for UniqueID: {guid_value}")
-                raise ValueError(f"No Person record found for UniqueID: {guid_value}")
-
-            # Insert into NameTable with correct OwnerID (PersonID)
-            profile_name_table = NameTable(
-                OwnerID=person_id,
-                Given=name_given,
-                Surname=name_surname,
-                IsPrimary=1,
-                NameType=6,
-            )
-            rm_session.add(profile_name_table)
+                # Create new record in NameTable
+                profile_name_table = NameTable(
+                    OwnerID=person_id,
+                    Given=name_given,
+                    Surname=name_surname,
+                    IsPrimary=1,
+                    NameType=6,
+                )
+                rm_session.add(profile_name_table)
+                logging.info(f"Inserted record into NameTable for PersonID: {person_id}")
 
         except MultipleResultsFound:
-            rm_session.commit()
-            profile_person_table = PersonTable(
-                UniqueID=guid_value,
-                Color=1,
-            )
-            rm_session.merge(profile_person_table)
-            rm_session.commit()  # Commit the merged record
-
+            logging.error(
+                f"Multiple records found for UniqueID: {guid_value}. Please check the database for duplicates.")
+            rm_session.rollback()
         except Exception as e:
             logging.error(f"Error processing kit: {id_value}, GUID: {guid_value}, Name: {name_given} {name_surname}")
-            logging.exception(e)  # Log the full exception traceback for debugging
+            logging.exception(e)
+            rm_session.rollback()
 
     rm_session.commit()
-    logging.info(f"Inserted or updated DNA Kits and Profiles.")
+    logging.info("Inserted or updated DNA Kits and Profiles.")
 
 
 def filter_selected_kits(filter_session: Session, f_selected_kits):
