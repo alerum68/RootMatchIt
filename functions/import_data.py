@@ -265,12 +265,13 @@ def process_ancestry(session: Session, filtered_ids):
             # Define process_matchgroup function to process Ancestry match groups
             def process_matchgroup(mg_session, group):
                 match_tree = mg_session.query(Ancestry_matchTrees).filter_by(matchid=group.matchGuid).first()
-                person_id = match_tree.personId if match_tree else None
+                person_id = abs(int(match_tree.personId)) if match_tree and match_tree.personId is not None else None
 
                 name = group.matchTestDisplayName
                 given, surname = (name.split()[0], name.split()[-1]) if len(name.split()) > 1 else (name, "")
 
                 match_group = {
+                    'PersonID': person_id,
                     'unique_id': group.matchGuid,
                     'sex': 1 if group.subjectGender == 'F' else 0 if group.subjectGender == 'M' else 2,
                     'color': 25,
@@ -296,10 +297,6 @@ def process_ancestry(session: Session, filtered_ids):
                     'NameType': 6,
                 }
 
-                # Only add PersonID to the dictionary if it's not None
-                if person_id is not None:
-                    match_group['PersonID'] = person_id
-
                 return match_group
 
             # Process Ancestry match groups
@@ -312,52 +309,64 @@ def process_ancestry(session: Session, filtered_ids):
             processed_ancestry_data.extend(match_groups)
 
         if ancestry_matchtrees and filtered_ids.get('Ancestry_matchTrees'):
-            def process_matchtree(tree):
-                try:
-                    person_id = abs(int(tree.personId)) if tree.personId and tree.personId.isdigit() else None
-                except ValueError:
-                    logging.warning(f"Invalid personId value: {tree.personId}. Skipping.")
-                    return None
+            if ancestry_matchtrees and filtered_ids.get('Ancestry_matchTrees'):
+                def process_matchtree(tree, person=None):
+                    try:
+                        person_id = abs(int(person.get('personId', 0))) if person.get('personId') else None
+                        father_id = abs(int(person.get('fatherId', 0))) if person.get('fatherId') else None
+                        mother_id = abs(int(person.get('motherId', 0))) if person.get('motherId') else None
+                    except ValueError:
+                        logging.warning(f"Invalid personId value: {person.get('personId')}. Skipping.")
+                        return None
 
-                sex_value = 2
-                father_match = session.query(Ancestry_matchTrees).filter(
-                    Ancestry_matchTrees.fatherId == tree.personId
-                ).first()
-                if father_match:
-                    sex_value = 0
-                if sex_value == 2:
-                    mother_match = session.query(Ancestry_matchTrees).filter(
-                        Ancestry_matchTrees.motherId == tree.personId
-                    ).first()
-                    if mother_match:
-                        sex_value = 1  # Female if found in motherId
+                    sex_value = 2
+                    if person_id is not None:
+                        father_match = session.query(Ancestry_matchTrees).filter(
+                            Ancestry_matchTrees.fatherId == person_id
+                        ).first()
+                        if father_match:
+                            sex_value = 0
+                        else:
+                            mother_match = session.query(Ancestry_matchTrees).filter(
+                                Ancestry_matchTrees.motherId == person_id
+                            ).first()
+                            if mother_match:
+                                sex_value = 1  # Female if found in motherId
 
-                # Generate unique_id based on relid condition
-                if tree.relid == '1':
-                    unique_id = tree.matchid
-                else:
-                    unique_id = generate_unique_id(tree.given, tree.surname, tree.birthdate)
+                    # Generate unique_id based on relid condition
+                    if tree.relid == '1':
+                        unique_id = tree.matchid
+                    else:
+                        unique_id = generate_unique_id(tree.given, tree.surname, tree.birthdate)
 
-                return {
-                    'unique_id': unique_id,
-                    'sex': sex_value,
-                    'color': 24,
-                    'matchid': tree.matchid,
-                    'Surname': tree.surname,
-                    'Given': tree.given,
-                    'birthdate': tree.birthdate,
-                    'deathdate': tree.deathdate,
-                    'birthplace': tree.birthplace,
-                    'deathplace': tree.deathplace,
-                    'relid': tree.relid,
-                    'personId': person_id,
-                    'fatherId': tree.fatherId,
-                    'motherId': tree.motherId,
-                    'DNAProvider': 2,
-                    'Date': tree.created_date,
-                    'IsPrimary': 1,
-                    'NameType': 2,
-                }
+                    return {
+                        'unique_id': unique_id,
+                        'sex': sex_value,
+                        'color': 24,
+                        'matchid': tree.matchid,
+                        'Surname': tree.surname,
+                        'Given': tree.given,
+                        'birthdate': tree.birthdate,
+                        'deathdate': tree.deathdate,
+                        'birthplace': tree.birthplace,
+                        'deathplace': tree.deathplace,
+                        'relid': tree.relid,
+                        'PersonID': person_id,
+                        'FatherID': father_id,
+                        'MotherID': mother_id,
+                        'DNAProvider': 2,
+                        'Date': tree.created_date,
+                        'IsPrimary': 1,
+                        'NameType': 2,
+                    }
+
+                # Process Ancestry match trees
+                match_trees = process_table_with_limit(
+                    session, Ancestry_matchTrees, filtered_ids['Ancestry_matchTrees'],
+                    process_matchtree, limit
+                )
+
+                processed_ancestry_data.extend(match_trees)
 
             # Process Ancestry match trees
             match_trees = process_table_with_limit(
@@ -393,7 +402,8 @@ def process_ancestry(session: Session, filtered_ids):
         if ancestry_icw and filtered_ids.get('Ancestry_ICW'):
             def process_icw(icw):
                 match_tree = session.query(Ancestry_matchTrees).filter_by(matchid=icw.matchid).first()
-                person_id = match_tree.personId if match_tree else None
+                person_id = abs(int(match_tree.personId)) if match_tree and match_tree.personId is not None else None
+
                 return {
                     'PersonID': person_id,
                     'testGuid': icw.matchid,
@@ -773,7 +783,7 @@ def insert_person(person_rm_session: Session, processed_data, batch_size=1000):
         processed_count = 0
         for data in processed_data:
             # Get PersonID from processed_data, checking both 'PersonID' and 'personId'
-            person_id = data.get('PersonID') or data.get('personId')
+            person_id = data.get('PersonID')
 
             # Map processed_data to PersonTable columns
             person_data = {
@@ -783,24 +793,24 @@ def insert_person(person_rm_session: Session, processed_data, batch_size=1000):
                 'UTCModDate': func.julianday('now') - 2415018.5,
             }
 
-            # Add PersonID to person_data only if it's not None
+            # Add PersonID to person_data if it's not None
             if person_id is not None:
                 person_data['PersonID'] = person_id
 
+            # Try to find an existing person record
+            existing_person = None
             if person_id is not None:
-                # Check if a person record already exists for this PersonID
                 existing_person = person_rm_session.query(PersonTable).filter_by(PersonID=person_id).first()
+            if not existing_person and person_data['UniqueID']:
+                existing_person = person_rm_session.query(PersonTable).filter_by(
+                    UniqueID=person_data['UniqueID']).first()
 
-                if existing_person:
-                    # Update existing record
-                    for key, value in person_data.items():
-                        setattr(existing_person, key, value)
-                else:
-                    # Create new record with PersonID
-                    new_person = PersonTable(**person_data)
-                    person_rm_session.add(new_person)
+            if existing_person:
+                # Update existing record
+                for key, value in person_data.items():
+                    setattr(existing_person, key, value)
             else:
-                # Create new record without PersonID
+                # Create new record
                 new_person = PersonTable(**person_data)
                 person_rm_session.add(new_person)
 
@@ -832,10 +842,20 @@ def insert_name(name_rm_session: Session, processed_data, batch_size=1000):
         processed_count = 0
         for data in processed_data:
             # Get PersonID from processed_data
-            person_id = data.get('PersonID')
-            if not person_id:
-                logging.warning(f"PersonID not found for data: {data}")
-                continue
+            person_id = data.get('PersonID') or data.get('personId')
+
+            # If person_id is None, try to find it in the PersonTable
+            if person_id is None:
+                # Assuming there's a unique identifier in the data, like 'unique_id'
+                unique_id = data.get('unique_id')
+                if unique_id:
+                    person_record = name_rm_session.query(PersonTable).filter_by(UniqueID=unique_id).first()
+                    if person_record:
+                        person_id = person_record.PersonID
+                    else:
+                        logging.warning(f"No matching PersonID found for UniqueID: {unique_id}")
+                else:
+                    logging.warning("No PersonID or UniqueID available for this record")
 
             # Map processed_data to NameTable columns
             name_data = {
@@ -850,17 +870,21 @@ def insert_name(name_rm_session: Session, processed_data, batch_size=1000):
             }
 
             # Check if a name record already exists for this person and name type
-            existing_name = name_rm_session.query(NameTable).filter_by(OwnerID=name_data['OwnerID'],
-                                                                       NameType=name_data['NameType']).first()
+            existing_name = None
+            if person_id is not None:
+                existing_name = name_rm_session.query(NameTable).filter_by(OwnerID=person_id,
+                                                                           NameType=name_data['NameType']).first()
 
             if existing_name:
                 # Update existing record
                 for key, value in name_data.items():
                     setattr(existing_name, key, value)
+                logging.info(f"Updated existing name record for OwnerID: {person_id}")
             else:
                 # Create new record
                 new_name = NameTable(**name_data)
                 name_rm_session.add(new_name)
+                logging.info(f"Inserted new name record for OwnerID: {person_id}")
 
             processed_count += 1
             if processed_count % batch_size == 0:
@@ -1319,7 +1343,7 @@ def main():
         try:
             insert_fact_type(rm_session)
             insert_person(rm_session, processed_data)
-            # insert_name(rm_session, processed_data)
+            insert_name(rm_session, processed_data)
             # insert_event(rm_session, processed_data)
             # insert_child(rm_session, processed_data)
             # insert_family(rm_session, processed_data)
