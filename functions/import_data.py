@@ -327,6 +327,9 @@ def process_ancestry(session: Session, filtered_ids):
                 lambda group: process_matchgroup(session, group), limit
             )
 
+            # Create a dictionary to store match_groups data for quick lookup
+            match_groups_dict = {group['unique_id']: group for group in match_groups}
+
             # Extend processed data with the processed match groups
             processed_ancestry_data.extend(match_groups or [])
 
@@ -360,16 +363,24 @@ def process_ancestry(session: Session, filtered_ids):
 
                 if tree.relid == '1':
                     unique_id = tree.matchid
+                    # Use match_groups data if available
+                    match_group_data = match_groups_dict.get(unique_id, {})
+                    surname = match_group_data.get('Surname', tree.surname)
+                    given = match_group_data.get('Given', tree.given)
+                    name_type = match_group_data.get('NameType', 6)
                 else:
                     unique_id = generate_unique_id(tree.given, tree.surname, tree.birthdate)
+                    surname = tree.surname
+                    given = tree.given
+                    name_type = 2
 
                 return {
                     'unique_id': unique_id,
                     'sex': sex_value,
                     'color': 24,
                     'matchid': tree.matchid,
-                    'Surname': tree.surname,
-                    'Given': tree.given,
+                    'Surname': surname,
+                    'Given': given,
                     'birthdate': tree.birthdate,
                     'deathdate': tree.deathdate,
                     'birthplace': tree.birthplace,
@@ -381,7 +392,7 @@ def process_ancestry(session: Session, filtered_ids):
                     'DNAProvider': 2,
                     'Date': tree.created_date,
                     'IsPrimary': 1,
-                    'NameType': 2,
+                    'NameType': name_type,
                 }
 
             try:
