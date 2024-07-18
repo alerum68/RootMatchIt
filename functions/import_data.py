@@ -14,6 +14,7 @@ import logging
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError, MultipleResultsFound, NoResultFound
 import uuid
+import hashlib
 
 ancestry_base = Ancestry_Base()
 ftdna_base = FTDNA_Base()
@@ -48,7 +49,16 @@ def process_table_with_limit(session, table_class, filter_ids, process_func, app
     if apply_limit > 0:
         query = query.limit(apply_limit)
     limited_data = query.all()
-    processed_data = [process_func(item) for item in limited_data]
+
+    # Fetch related person data for Ancestry_matchTrees only
+    processed_data = []
+    for item in limited_data:
+        if isinstance(item, Ancestry_matchTrees):
+            person_data = session.query(Ancestry_matchTrees).filter_by(Id=item.Id).first()
+            processed_data.append(process_func(item, person_data))
+        else:
+            processed_data.append(process_func(item))
+
     return processed_data[:apply_limit] if apply_limit > 0 else processed_data
 
 
@@ -97,6 +107,7 @@ def process_and_import_profiles(rm_session: Session, selected_kits):
                 person_record = PersonTable(
                     UniqueID=guid_value,
                     Color=1,
+                    UTCModDate=func.julianday('now') - 2415018.5,
                 )
                 rm_session.add(person_record)
                 rm_session.commit()
@@ -106,13 +117,14 @@ def process_and_import_profiles(rm_session: Session, selected_kits):
             person_id = person_record.PersonID
 
             # Check if a name record already exists for this person and name type
-            existing_name = rm_session.query(NameTable).filter_by(OwnerID=person_id, NameType=6).first()
+            existing_name = rm_session.query(NameTable).filter_by(OwnerID=person_id, NameType=2).first()
 
             if existing_name:
                 # Update existing record
                 existing_name.Given = name_given
                 existing_name.Surname = name_surname
                 existing_name.IsPrimary = 1
+
             else:
                 # Create new record in NameTable
                 profile_name_table = NameTable(
@@ -120,7 +132,7 @@ def process_and_import_profiles(rm_session: Session, selected_kits):
                     Given=name_given,
                     Surname=name_surname,
                     IsPrimary=1,
-                    NameType=6,
+                    NameType=2,
                 )
                 rm_session.add(profile_name_table)
                 logging.info(f"Inserted record into NameTable for PersonID: {person_id}")
@@ -258,19 +270,31 @@ def process_ancestry(session: Session, filtered_ids):
     logging.info("Processing Ancestry data...")
 
     processed_ancestry_data = []
+    id_mapping = {}  # Initialize id_mapping dictionary
+
+    def hash_id(original_id):
+        if original_id is None:
+            return None
+        if original_id in id_mapping:
+            return id_mapping[original_id]
+        hash_object = hashlib.md5(str(original_id).encode())
+        hash_hex = hash_object.hexdigest()
+        hash_int = int(hash_hex[:8], 16)
+        hashed_id = (hash_int % 9999999) + 100
+        id_mapping[original_id] = hashed_id
+        return hashed_id
 
     try:
         # Check condition before calling process_matchgroups
         if ancestry_matchgroups and filtered_ids.get('Ancestry_matchGroups'):
-            # Define process_matchgroup function to process Ancestry match groups
             def process_matchgroup(mg_session, group):
                 match_tree = mg_session.query(Ancestry_matchTrees).filter_by(matchid=group.matchGuid).first()
-                person_id = abs(int(match_tree.personId)) if match_tree and match_tree.personId is not None else None
+                person_id = hash_id(match_tree.personId) if match_tree and match_tree.personId is not None else None
 
                 name = group.matchTestDisplayName
                 given, surname = (name.split()[0], name.split()[-1]) if len(name.split()) > 1 else (name, "")
 
-                match_group = {
+                return {
                     'PersonID': person_id,
                     'unique_id': group.matchGuid,
                     'sex': 1 if group.subjectGender == 'F' else 0 if group.subjectGender == 'M' else 2,
@@ -297,112 +321,116 @@ def process_ancestry(session: Session, filtered_ids):
                     'NameType': 6,
                 }
 
-                return match_group
-
             # Process Ancestry match groups
             match_groups = process_table_with_limit(
-                session, Ancestry_matchGroups, filtered_ids['Ancestry_matchGroups'],
+                session, Ancestry_matchGroups, filtered_ids.get('Ancestry_matchGroups', []),
                 lambda group: process_matchgroup(session, group), limit
             )
 
             # Extend processed data with the processed match groups
-            processed_ancestry_data.extend(match_groups)
+            processed_ancestry_data.extend(match_groups or [])
 
         if ancestry_matchtrees and filtered_ids.get('Ancestry_matchTrees'):
-            if ancestry_matchtrees and filtered_ids.get('Ancestry_matchTrees'):
-                def process_matchtree(tree, person=None):
-                    try:
-                        person_id = abs(int(person.get('personId', 0))) if person.get('personId') else None
-                        father_id = abs(int(person.get('fatherId', 0))) if person.get('fatherId') else None
-                        mother_id = abs(int(person.get('motherId', 0))) if person.get('motherId') else None
-                    except ValueError:
-                        logging.warning(f"Invalid personId value: {person.get('personId')}. Skipping.")
-                        return None
+            def process_matchtree(tree, person_data=None):
+                try:
+                    # Use person_data if provided, otherwise use tree
+                    data_source = person_data if person_data else tree
 
-                    sex_value = 2
-                    if person_id is not None:
-                        father_match = session.query(Ancestry_matchTrees).filter(
-                            Ancestry_matchTrees.fatherId == person_id
-                        ).first()
-                        if father_match:
-                            sex_value = 0
-                        else:
-                            mother_match = session.query(Ancestry_matchTrees).filter(
-                                Ancestry_matchTrees.motherId == person_id
-                            ).first()
-                            if mother_match:
-                                sex_value = 1  # Female if found in motherId
+                    person_id = hash_id(data_source.personId) if data_source.personId is not None else None
+                    father_id = hash_id(data_source.fatherId) if data_source.fatherId is not None else None
+                    mother_id = hash_id(data_source.motherId) if data_source.motherId is not None else None
+                    logging.debug(f"Processed IDs: person_id={person_id}, father_id={father_id}, mother_id={mother_id}")
+                except ValueError as mte:
+                    logging.warning(f"Invalid ID value for tree {tree.matchid}: {str(mte)}. Skipping.")
+                    return None
 
-                    # Generate unique_id based on relid condition
-                    if tree.relid == '1':
-                        unique_id = tree.matchid
+                sex_value = 2
+                if data_source.personId is not None:
+                    father_match = session.query(Ancestry_matchTrees).filter(
+                        Ancestry_matchTrees.fatherId == data_source.personId  # Use original ID for query
+                    ).first()
+                    if father_match:
+                        sex_value = 0
                     else:
-                        unique_id = generate_unique_id(tree.given, tree.surname, tree.birthdate)
+                        mother_match = session.query(Ancestry_matchTrees).filter(
+                            Ancestry_matchTrees.motherId == data_source.personId  # Use original ID for query
+                        ).first()
+                        if mother_match:
+                            sex_value = 1  # Female if found in motherId
 
-                    return {
-                        'unique_id': unique_id,
-                        'sex': sex_value,
-                        'color': 24,
-                        'matchid': tree.matchid,
-                        'Surname': tree.surname,
-                        'Given': tree.given,
-                        'birthdate': tree.birthdate,
-                        'deathdate': tree.deathdate,
-                        'birthplace': tree.birthplace,
-                        'deathplace': tree.deathplace,
-                        'relid': tree.relid,
-                        'PersonID': person_id,
-                        'FatherID': father_id,
-                        'MotherID': mother_id,
-                        'DNAProvider': 2,
-                        'Date': tree.created_date,
-                        'IsPrimary': 1,
-                        'NameType': 2,
-                    }
+                if tree.relid == '1':
+                    unique_id = tree.matchid
+                else:
+                    unique_id = generate_unique_id(tree.given, tree.surname, tree.birthdate)
 
+                return {
+                    'unique_id': unique_id,
+                    'sex': sex_value,
+                    'color': 24,
+                    'matchid': tree.matchid,
+                    'Surname': tree.surname,
+                    'Given': tree.given,
+                    'birthdate': tree.birthdate,
+                    'deathdate': tree.deathdate,
+                    'birthplace': tree.birthplace,
+                    'deathplace': tree.deathplace,
+                    'relid': tree.relid,
+                    'PersonID': person_id,
+                    'FatherID': father_id,
+                    'MotherID': mother_id,
+                    'DNAProvider': 2,
+                    'Date': tree.created_date,
+                    'IsPrimary': 1,
+                    'NameType': 2,
+                }
+
+            try:
                 # Process Ancestry match trees
                 match_trees = process_table_with_limit(
-                    session, Ancestry_matchTrees, filtered_ids['Ancestry_matchTrees'],
+                    session, Ancestry_matchTrees, filtered_ids.get('Ancestry_matchTrees', []),
                     process_matchtree, limit
                 )
 
-                processed_ancestry_data.extend(match_trees)
-
-            # Process Ancestry match trees
-            match_trees = process_table_with_limit(
-                session, Ancestry_matchTrees, filtered_ids['Ancestry_matchTrees'],
-                process_matchtree, limit
-            )
-
-            processed_ancestry_data.extend(match_trees)
+                processed_ancestry_data.extend(match_trees or [])
+            except Exception as e:
+                logging.error(f"An error occurred while processing Ancestry match trees: {str(e)}")
+                logging.exception("Exception details:")
 
         # Check if Ancestry_TreeData should be processed
         if ancestry_treedata and filtered_ids.get('Ancestry_TreeData'):
             def process_treedata(treedata):
-                return {
-                    'TestGuid': treedata.TestGuid,
-                    'TreeSize': treedata.TreeSize,
-                    'PublicTree': treedata.PublicTree,
-                    'PrivateTree': treedata.PrivateTree,
-                    'UnlinkedTree': treedata.UnlinkedTree,
-                    'TreeId': treedata.TreeId,
-                    'NoTrees': treedata.NoTrees,
-                    'TreeUnavailable': treedata.TreeUnavailable,
-                }
+                try:
+                    return {
+                        'TestGuid': treedata.TestGuid,
+                        'TreeSize': treedata.TreeSize,
+                        'PublicTree': treedata.PublicTree,
+                        'PrivateTree': treedata.PrivateTree,
+                        'UnlinkedTree': treedata.UnlinkedTree,
+                        'TreeId': treedata.TreeId,
+                        'NoTrees': treedata.NoTrees,
+                        'TreeUnavailable': treedata.TreeUnavailable,
+                    }
+                except AttributeError as tde:
+                    logging.warning(f"Missing attribute in tree data: {str(tde)}. Skipping this record.")
+                    return None
 
-            # Process Ancestry tree data
-            tree_data = process_table_with_limit(
-                session, Ancestry_TreeData, filtered_ids['Ancestry_TreeData'],
-                process_treedata, limit
-            )
+            try:
+                # Process Ancestry tree data
+                tree_data = process_table_with_limit(
+                    session, Ancestry_TreeData, filtered_ids.get('Ancestry_TreeData', []),
+                    process_treedata, limit
+                )
 
-            processed_ancestry_data.extend(tree_data)
+                processed_ancestry_data.extend(tree_data or [])
+            except Exception as e:
+                logging.error(f"An error occurred while processing Ancestry tree data: {str(e)}")
+                logging.exception("Exception details:")
 
         # Check if Ancestry_ICW should be processed
         if ancestry_icw and filtered_ids.get('Ancestry_ICW'):
             def process_icw(icw):
                 match_tree = session.query(Ancestry_matchTrees).filter_by(matchid=icw.matchid).first()
-                person_id = abs(int(match_tree.personId)) if match_tree and match_tree.personId is not None else None
+                person_id = hash_id(match_tree.personId) if match_tree and match_tree.personId is not None else None
 
                 return {
                     'PersonID': person_id,
@@ -417,80 +445,96 @@ def process_ancestry(session: Session, filtered_ids):
 
             # Process Ancestry ICW data
             icw_data = process_table_with_limit(
-                session, Ancestry_ICW, filtered_ids['Ancestry_ICW'],
+                session, Ancestry_ICW, filtered_ids.get('Ancestry_ICW', []),
                 process_icw, limit
             )
 
-            processed_ancestry_data.extend(icw_data)
+            processed_ancestry_data.extend(icw_data or [])
 
         # Check if Ancestry_matchethnicity should be processed
         if ancestry_matchethnicity and filtered_ids.get('Ancestry_matchEthnicity'):
             def process_matchethnicity(ethnicity):
-                return {
-                    'unique_id': generate_unique_id(ethnicity.matchGuid),
-                    'matchGuid': ethnicity.matchGuid,
-                    'ethnicregions': ethnicity.ethnicregions,
-                    'ethnictraceregions': ethnicity.ethnictraceregions,
-                    'Date': ethnicity.created_date,
-                    'percent': ethnicity.percent,
-                    'version': ethnicity.version,
-                }
+                try:
+                    return {
+                        'unique_id': generate_unique_id(ethnicity.matchGuid),
+                        'matchGuid': ethnicity.matchGuid,
+                        'ethnicregions': ethnicity.ethnicregions,
+                        'ethnictraceregions': ethnicity.ethnictraceregions,
+                        'Date': ethnicity.created_date,
+                        'percent': ethnicity.percent,
+                        'version': ethnicity.version,
+                    }
+                except AttributeError as mee:
+                    logging.warning(f"Missing attribute in match ethnicity: {str(mee)}. Skipping this record.")
+                    return None
 
-            # Process Ancestry match ethnicity data
-            match_ethnicity_data = process_table_with_limit(
-                session, Ancestry_matchEthnicity, filtered_ids['Ancestry_matchEthnicity'],
-                process_matchethnicity, limit
-            )
+            try:
+                # Process Ancestry match ethnicity data
+                match_ethnicity_data = process_table_with_limit(
+                    session, Ancestry_matchEthnicity, filtered_ids.get('Ancestry_matchEthnicity', []),
+                    process_matchethnicity, limit
+                )
 
-            processed_ancestry_data.extend(match_ethnicity_data)
+                processed_ancestry_data.extend(match_ethnicity_data or [])
+            except Exception as e:
+                logging.error(f"An error occurred while processing Ancestry match ethnicity data: {str(e)}")
+                logging.exception("Exception details:")
 
         # Check if Ancestry_ancestorcouple should be processed
         if ancestry_ancestorcouple and filtered_ids.get('AncestryAncestorCouple'):
             def process_ancestorcouple(couple):
-                return {
-                    'Id': couple.Id,
-                    'TestGuid': couple.TestGuid,
-                    'MatchGuid': couple.MatchGuid,
-                    'FatherAmtGid': couple.FatherAmtGid,
-                    'FatherBigTreeGid': couple.FatherBigTreeGid,
-                    'FatherKinshipPathToSampleId': couple.FatherKinshipPathToSampleId,
-                    'FatherKinshipPathFromSampleToMatch': couple.FatherKinshipPathFromSampleToMatch,
-                    'FatherPotential': couple.FatherPotential,
-                    'FatherInMatchTree': couple.FatherInMatchTree,
-                    'FatherInBestContributorTree': couple.FatherInBestContributorTree,
-                    'FatherDisplayName': couple.FatherDisplayName,
-                    'FatherBirthYear': couple.FatherBirthYear,
-                    'FatherDeathYear': couple.FatherDeathYear,
-                    'FatherIsMale': couple.FatherIsMale,
-                    'FatherNotFound': couple.FatherNotFound,
-                    'FatherVeiled': couple.FatherVeiled,
-                    'FatherRelationshipToSampleId': couple.FatherRelationshipToSampleId,
-                    'FatherRelationshipFromSampleToMatch': couple.FatherRelationshipFromSampleToMatch,
-                    'MotherAmtGid': couple.MotherAmtGid,
-                    'MotherBigTreeGid': couple.MotherBigTreeGid,
-                    'MotherKinshipPathToSampleId': couple.MotherKinshipPathToSampleId,
-                    'MotherKinshipPathFromSampleToMatch': couple.MotherKinshipPathFromSampleToMatch,
-                    'MotherPotential': couple.MotherPotential,
-                    'MotherInMatchTree': couple.MotherInMatchTree,
-                    'MotherInBestContributorTree': couple.MotherInBestContributorTree,
-                    'MotherDisplayName': couple.MotherDisplayName,
-                    'MotherBirthYear': couple.MotherBirthYear,
-                    'MotherDeathYear': couple.MotherDeathYear,
-                    'MotherIsFemale': couple.MotherIsFemale,
-                    'MotherNotFound': couple.MotherNotFound,
-                    'MotherVeiled': couple.MotherVeiled,
-                    'MotherRelationshipToSampleId': couple.MotherRelationshipToSampleId,
-                    'MotherRelationshipFromSampleToMatch': couple.MotherRelationshipFromSampleToMatch,
-                    'date': couple.date,
-                }
+                try:
+                    return {
+                        'Id': couple.Id,
+                        'TestGuid': couple.TestGuid,
+                        'MatchGuid': couple.MatchGuid,
+                        'FatherAmtGid': couple.FatherAmtGid,
+                        'FatherBigTreeGid': couple.FatherBigTreeGid,
+                        'FatherKinshipPathToSampleId': couple.FatherKinshipPathToSampleId,
+                        'FatherKinshipPathFromSampleToMatch': couple.FatherKinshipPathFromSampleToMatch,
+                        'FatherPotential': couple.FatherPotential,
+                        'FatherInMatchTree': couple.FatherInMatchTree,
+                        'FatherInBestContributorTree': couple.FatherInBestContributorTree,
+                        'FatherDisplayName': couple.FatherDisplayName,
+                        'FatherBirthYear': couple.FatherBirthYear,
+                        'FatherDeathYear': couple.FatherDeathYear,
+                        'FatherIsMale': couple.FatherIsMale,
+                        'FatherNotFound': couple.FatherNotFound,
+                        'FatherVeiled': couple.FatherVeiled,
+                        'FatherRelationshipToSampleId': couple.FatherRelationshipToSampleId,
+                        'FatherRelationshipFromSampleToMatch': couple.FatherRelationshipFromSampleToMatch,
+                        'MotherAmtGid': couple.MotherAmtGid,
+                        'MotherBigTreeGid': couple.MotherBigTreeGid,
+                        'MotherKinshipPathToSampleId': couple.MotherKinshipPathToSampleId,
+                        'MotherKinshipPathFromSampleToMatch': couple.MotherKinshipPathFromSampleToMatch,
+                        'MotherPotential': couple.MotherPotential,
+                        'MotherInMatchTree': couple.MotherInMatchTree,
+                        'MotherInBestContributorTree': couple.MotherInBestContributorTree,
+                        'MotherDisplayName': couple.MotherDisplayName,
+                        'MotherBirthYear': couple.MotherBirthYear,
+                        'MotherDeathYear': couple.MotherDeathYear,
+                        'MotherIsFemale': couple.MotherIsFemale,
+                        'MotherNotFound': couple.MotherNotFound,
+                        'MotherVeiled': couple.MotherVeiled,
+                        'MotherRelationshipToSampleId': couple.MotherRelationshipToSampleId,
+                        'MotherRelationshipFromSampleToMatch': couple.MotherRelationshipFromSampleToMatch,
+                        'date': couple.date,
+                    }
+                except AttributeError as ace:
+                    logging.warning(f"Missing attribute in ancestor couple: {str(ace)}. Skipping this record.")
+                    return None
 
-            # Process Ancestry ancestor couple data
-            ancestor_couple_data = process_table_with_limit(
-                session, AncestryAncestorCouple, filtered_ids['AncestryAncestorCouple'],
-                process_ancestorcouple, limit
-            )
+            try:
+                # Process Ancestry ancestor couple data
+                ancestor_couple_data = process_table_with_limit(
+                    session, AncestryAncestorCouple, filtered_ids.get('AncestryAncestorCouple', []),
+                    process_ancestorcouple, limit
+                )
 
-            processed_ancestry_data.extend(ancestor_couple_data)
+                processed_ancestry_data.extend(ancestor_couple_data or [])
+            except Exception as e:
+                logging.error(f"An error occurred while processing Ancestry ancestor couple data: {str(e)}")
+                logging.exception("Exception details:")
 
     except Exception as e:
         logging.error(f"An error occurred during processing Ancestry data: {str(e)}")
@@ -771,7 +815,7 @@ def insert_fact_type(fact_rm_session: Session):
         fact_rm_session.close()
 
 
-def insert_person(person_rm_session: Session, processed_data, batch_size=1000):
+def insert_person(person_rm_session: Session, processed_data, batch_size=limit):
     logging.getLogger('insert_person')
     logging.info("Inserting or updating individuals in PersonTable...")
 
@@ -830,7 +874,7 @@ def insert_person(person_rm_session: Session, processed_data, batch_size=1000):
         person_rm_session.close()
 
 
-def insert_name(name_rm_session: Session, processed_data, batch_size=1000):
+def insert_name(name_rm_session: Session, processed_data, batch_size=limit):
     logging.getLogger('insert_name')
     logging.info("Inserting or updating names in NameTable...")
 
@@ -879,7 +923,6 @@ def insert_name(name_rm_session: Session, processed_data, batch_size=1000):
                 # Update existing record
                 for key, value in name_data.items():
                     setattr(existing_name, key, value)
-                logging.info(f"Updated existing name record for OwnerID: {person_id}")
             else:
                 # Create new record
                 new_name = NameTable(**name_data)
@@ -902,7 +945,7 @@ def insert_name(name_rm_session: Session, processed_data, batch_size=1000):
         name_rm_session.close()
 
 
-def insert_dna(dna_rm_session: Session, processed_data, match_groups, icw, batch_size=1000):
+def insert_dna(dna_rm_session: Session, processed_data, match_groups, icw, batch_size=limit):
     logging.getLogger('insert_dna')
     logging.info("Inserting or updating DNA data in DNATable...")
 
@@ -983,7 +1026,7 @@ def insert_dna(dna_rm_session: Session, processed_data, match_groups, icw, batch
         dna_rm_session.close()
 
 
-def insert_event(event_rm_session: Session, processed_data, batch_size=1000):
+def insert_event(event_rm_session: Session, processed_data, batch_size=limit):
     logging.getLogger('insert_event')
     logging.info("Inserting or updating events in EventTable...")
 
@@ -1052,7 +1095,7 @@ def insert_event(event_rm_session: Session, processed_data, batch_size=1000):
         event_rm_session.close()
 
 
-def insert_place(place_rm_session: Session, processed_data, batch_size=1000):
+def insert_place(place_rm_session: Session, processed_data, batch_size=limit):
     logging.getLogger('insert_place')
     logging.info("Inserting or updating places in PlaceTable...")
 
@@ -1105,7 +1148,7 @@ def insert_place(place_rm_session: Session, processed_data, batch_size=1000):
         place_rm_session.close()
 
 
-def insert_child(child_rm_session: Session, processed_data, batch_size=1000):
+def insert_child(child_rm_session: Session, processed_data, batch_size=limit):
     logging.getLogger('insert_child')
     logging.info("Inserting or updating children in ChildTable...")
 
@@ -1158,7 +1201,7 @@ def insert_child(child_rm_session: Session, processed_data, batch_size=1000):
         child_rm_session.close()
 
 
-def insert_family(family_rm_session: Session, processed_data, batch_size=1000):
+def insert_family(family_rm_session: Session, processed_data, batch_size=limit):
     logging.getLogger('insert_family')
     logging.info("Inserting or updating family data in FamilyTable...")
 
@@ -1215,7 +1258,7 @@ def insert_family(family_rm_session: Session, processed_data, batch_size=1000):
         family_rm_session.close()
 
 
-def insert_group(group_rm_session: Session, processed_data, batch_size=1000):
+def insert_group(group_rm_session: Session, processed_data, batch_size=limit):
     logging.getLogger('insert_group')
     logging.info("Inserting or updating group data in GroupTable...")
 
@@ -1260,7 +1303,7 @@ def insert_group(group_rm_session: Session, processed_data, batch_size=1000):
         group_rm_session.close()
 
 
-def insert_url(url_rm_session: Session, processed_data, batch_size=1000):
+def insert_url(url_rm_session: Session, processed_data, batch_size=limit):
     logging.getLogger('insert_url')
     logging.info("Inserting or updating URL data in URLTable...")
 
