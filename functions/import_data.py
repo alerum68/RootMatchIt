@@ -1168,9 +1168,18 @@ def insert_child(child_rm_session: Session, processed_data, batch_size=limit):
         processed_count = 0
 
         for data in processed_data:
+            child_id = data.get('PersonID')  # Assuming PersonID is used as ChildID
+            family_id = data.get('FamilyID')
+
+            # Check if both ChildID and FamilyID are present
+            if not child_id or not family_id:
+                logging.warning(f"Skipped processing record due to missing ChildID or FamilyID: "
+                                f"ChildID={child_id}, FamilyID={family_id}")
+                continue
+
             # Check if a child record already exists for the given ChildID and FamilyID
             existing_child = child_rm_session.query(ChildTable).filter_by(
-                ChildID=data['ChildID'], FamilyID=data['FamilyID']).first()
+                ChildID=child_id, FamilyID=family_id).first()
 
             if existing_child:
                 # Update existing record
@@ -1178,18 +1187,18 @@ def insert_child(child_rm_session: Session, processed_data, batch_size=limit):
                     setattr(existing_child, key, value)
                 existing_child.UTCModDate = func.julianday('now') - 2415018.5
                 logging.info(
-                    f"Updated existing child record for ChildID: {data['ChildID']} and FamilyID: {data['FamilyID']}")
+                    f"Updated existing child record for ChildID: {child_id} and FamilyID: {family_id}")
             else:
                 # Create new record in ChildTable
                 child_data = {
-                    'ChildID': data.get('ChildID', None),
-                    'FamilyID': data.get('FamilyID', None),
+                    'ChildID': child_id,
+                    'FamilyID': family_id,
                     'UTCModDate': func.julianday('now') - 2415018.5,
                 }
                 new_child = ChildTable(**child_data)
                 child_rm_session.add(new_child)
                 logging.info(
-                    f"Inserted new child record for ChildID: {data['ChildID']} and FamilyID: {data['FamilyID']}")
+                    f"Inserted new child record for ChildID: {child_id} and FamilyID: {family_id}")
 
             processed_count += 1
             if batch_size > 0 and processed_count % batch_size == 0:
@@ -1402,11 +1411,11 @@ def main():
             insert_fact_type(rm_session)
             insert_person(rm_session, processed_data)
             insert_name(rm_session, processed_data)
-            # insert_event(rm_session, processed_data)
-            # insert_child(rm_session, processed_data)
             insert_family(rm_session, processed_data)
+            insert_child(rm_session, processed_data)
             # insert_dna(rm_session, processed_data)
             # insert_place(rm_session, processed_data)
+            # insert_event(rm_session, processed_data)
             # insert_url(rm_session, processed_data)
             # insert_group(rm_session, processed_data)
         except Exception as e:
