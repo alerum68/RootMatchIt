@@ -1,7 +1,5 @@
 # database.py
 # Local Imports
-from sqlalchemy.event import listen
-
 from setup_logging import setup_logging
 
 # Remote Imports
@@ -10,12 +8,12 @@ import logging
 import sqlite3
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.event import listen
 
 Base = declarative_base()
 
 
 def init_db(database_url):
-    # Initialize the database by creating tables based on the given database URL.
     engine = create_engine(database_url)
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)

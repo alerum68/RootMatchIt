@@ -125,10 +125,3 @@ class MH_Tree(MH_Base):
     __table_args__ = (
         UniqueConstraint('treeurl', name='IDX_MH_Tree'),
     )
-
-
-class DNAKit(MH_Base):
-    __tablename__ = 'DNA_Kits'
-    company = Column(String)
-    guid = Column(String, primary_key=True)
-    name = Column(String)
