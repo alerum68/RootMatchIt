@@ -1,13 +1,14 @@
+# Local Imports
+from a_classes import Ancestry_Profiles
+from database import find_database_paths
+from ftdna_classes import DNAKit
+from setup_logging import setup_logging
+
+# Remote Imports
 import logging
 import re
-
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-
-from a_classes import Ancestry_Profiles  # Import from a_classes
-from database import find_database_paths
-from ftdna_classes import DNAKit  # Import from ftdna_classes
-from setup_logging import setup_logging
 
 
 def user_kit_data(session):
@@ -66,17 +67,15 @@ def prompt_user_for_kits(dna_kits):
     selected_kits = []
 
     if selected_indices.strip() == "":
-        selected_kits = dna_kits  # Select all kits
+        selected_kits = dna_kits
     else:
         selected_indices = [idx.strip() for idx in selected_indices.split(',')]
         for idx in selected_indices:
-            # Check if it's a number
             if idx.isdigit():
                 idx = int(idx) - 1
                 if 0 <= idx < len(dna_kits):
                     selected_kits.append(dna_kits[idx])
             else:
-                # Check if it's a company name or first letter
                 company_map = {'a': 2, 'ancestry': 2, 'f': 3, 'ftdna': 3, 'm': 5, 'myheritage': 5}
                 company_id = company_map.get(idx.lower())
                 if company_id:
@@ -90,7 +89,6 @@ def main():
     logging.info("Connecting to database...")
     DNAGEDCOM_DB_PATH, ROOTSMAGIC_DB_PATH = find_database_paths()
 
-    # Create engine and session
     engine = create_engine(f'sqlite:///{DNAGEDCOM_DB_PATH}', echo=False)
     Session = sessionmaker(bind=engine)
     session = Session()
@@ -108,7 +106,6 @@ def main():
     else:
         logging.warning("No kits found.")
 
-    # Close session
     session.close()
 
 

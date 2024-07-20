@@ -22,7 +22,7 @@ mh_base = MH_Base()
 rm_base = RM_Base()
 
 # Switches
-limit = 500
+limit = 0
 # Ancestry
 ancestry_matchgroups = 1
 ancestry_matchtrees = 1
@@ -870,7 +870,7 @@ def insert_person(person_rm_session: Session, processed_data, batch_size=limit):
                 person_rm_session.add(new_person)
 
             processed_count += 1
-            if processed_count % batch_size == 0:
+            if batch_size > 0 and processed_count % batch_size == 0:
                 person_rm_session.flush()
 
         person_rm_session.commit()
@@ -938,10 +938,10 @@ def insert_name(name_rm_session: Session, processed_data, batch_size=limit):
                 # Create new record
                 new_name = NameTable(**name_data)
                 name_rm_session.add(new_name)
-                logging.info(f"Inserted new name record for OwnerID: {person_id}")
+                # logging.info(f"Inserted new name record for OwnerID: {person_id}")
 
             processed_count += 1
-            if processed_count % batch_size == 0:
+            if batch_size > 0 and processed_count % batch_size == 0:
                 name_rm_session.flush()
 
         name_rm_session.commit()
@@ -1023,7 +1023,7 @@ def insert_dna(dna_rm_session: Session, processed_data, match_groups, icw, batch
                 logging.info(f"Inserted new DNA record for ID1: {person_id_1} and ID2: {person_id_2}")
 
             processed_count += 1
-            if processed_count % batch_size == 0:
+            if batch_size > 0 and processed_count % batch_size == 0:
                 dna_rm_session.flush()
 
         dna_rm_session.commit()
@@ -1089,7 +1089,7 @@ def insert_event(event_rm_session: Session, processed_data, batch_size=limit):
                         f"Inserted new event record for OwnerID: {data['OwnerID']} and EventType: {data['EventType']}")
 
                 processed_count += 1
-                if processed_count % batch_size == 0:
+                if batch_size > 0 and processed_count % batch_size == 0:
                     event_rm_session.flush()
 
             except Exception as inner_e:
@@ -1145,7 +1145,7 @@ def insert_place(place_rm_session: Session, processed_data, batch_size=limit):
                 logging.info(f"Inserted new place record for Name: {data['Name']}")
 
             processed_count += 1
-            if processed_count % batch_size == 0:
+            if batch_size > 0 and processed_count % batch_size == 0:
                 place_rm_session.flush()
 
         place_rm_session.commit()
@@ -1198,7 +1198,7 @@ def insert_child(child_rm_session: Session, processed_data, batch_size=limit):
                     f"Inserted new child record for ChildID: {data['ChildID']} and FamilyID: {data['FamilyID']}")
 
             processed_count += 1
-            if processed_count % batch_size == 0:
+            if batch_size > 0 and processed_count % batch_size == 0:
                 child_rm_session.flush()
 
         child_rm_session.commit()
@@ -1255,7 +1255,7 @@ def insert_family(family_rm_session: Session, processed_data, batch_size=limit):
                 logging.info(f"Inserted new family record for FamilyID: {data['FamilyID']}")
 
             processed_count += 1
-            if processed_count % batch_size == 0:
+            if batch_size > 0 and processed_count % batch_size == 0:
                 family_rm_session.flush()
 
         family_rm_session.commit()
@@ -1300,7 +1300,7 @@ def insert_group(group_rm_session: Session, processed_data, batch_size=limit):
                 logging.info(f"Inserted new group record for GroupID: {data['GroupID']}")
 
             processed_count += 1
-            if processed_count % batch_size == 0:
+            if batch_size > 0 and processed_count % batch_size == 0:
                 group_rm_session.flush()
 
         group_rm_session.commit()
@@ -1349,7 +1349,7 @@ def insert_url(url_rm_session: Session, processed_data, batch_size=limit):
                 logging.info(f"Inserted new URL record for OwnerType {data['OwnerType']} and OwnerID {data['OwnerID']}")
 
             processed_count += 1
-            if processed_count % batch_size == 0:
+            if batch_size > 0 and processed_count % batch_size == 0:
                 url_rm_session.flush()
 
         url_rm_session.commit()
