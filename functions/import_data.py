@@ -342,7 +342,8 @@ def process_ancestry(session: Session, filtered_ids):
                     person_id = hash_id(data_source.personId) if data_source.personId is not None else None
                     father_id = hash_id(data_source.fatherId) if data_source.fatherId is not None else None
                     mother_id = hash_id(data_source.motherId) if data_source.motherId is not None else None
-                    logging.debug(f"Processed IDs: person_id={person_id}, father_id={father_id}, mother_id={mother_id}")
+                    # logging.debug(f"Processed IDs: person_id={person_id},
+                    # father_id={father_id}, mother_id={mother_id}")
                 except ValueError as mte:
                     logging.warning(f"Invalid ID value for tree {tree.matchid}: {str(mte)}. Skipping.")
                     return None
@@ -938,7 +939,7 @@ def insert_name(name_rm_session: Session, processed_data, batch_size=limit):
                 # Create new record
                 new_name = NameTable(**name_data)
                 name_rm_session.add(new_name)
-                # logging.info(f"Inserted new name record for OwnerID: {person_id}")
+                # logging.debug(f"Inserted new name record for OwnerID: {person_id}")
 
             processed_count += 1
             if batch_size > 0 and processed_count % batch_size == 0:
@@ -1183,13 +1184,6 @@ def insert_child(child_rm_session: Session, processed_data, batch_size=limit):
                 child_data = {
                     'ChildID': data.get('ChildID', None),
                     'FamilyID': data.get('FamilyID', None),
-                    'RelFather': data.get('RelFather', None),
-                    'RelMother': data.get('RelMother', None),
-                    'ChildOrder': data.get('ChildOrder', None),
-                    'IsPrivate': data.get('IsPrivate', None),
-                    'ProofFather': data.get('ProofFather', None),
-                    'ProofMother': data.get('ProofMother', None),
-                    'Note': data.get('Note', None),
                     'UTCModDate': func.julianday('now') - 2415018.5,
                 }
                 new_child = ChildTable(**child_data)
@@ -1220,39 +1214,49 @@ def insert_family(family_rm_session: Session, processed_data, batch_size=limit):
         processed_count = 0
 
         for data in processed_data:
+            family_id = data.get('FamilyID')
+            father_id = data.get('FatherID')
+            mother_id = data.get('MotherID')
+            child_id = data.get('PersonID')  # Ensure we're getting the PersonID as ChildID
+
             # Check if a family record already exists for the given FamilyID
-            existing_family = family_rm_session.query(FamilyTable).filter_by(
-                FamilyID=data['FamilyID']).first()
+            if family_id:
+                existing_family = family_rm_session.query(FamilyTable).filter_by(
+                    FamilyID=family_id).first()
+            else:
+                existing_family = family_rm_session.query(FamilyTable).filter(
+                    FamilyTable.FatherID == father_id,
+                    FamilyTable.MotherID == mother_id
+                ).first()
 
             if existing_family:
                 # Update existing record
                 for key, value in data.items():
-                    setattr(existing_family, key, value)
+                    if key in FamilyTable.__table__.columns:
+                        setattr(existing_family, key, value)
+                existing_family.ChildID = child_id  # Update ChildID
                 existing_family.UTCModDate = func.julianday('now') - 2415018.5
-                logging.info(f"Updated existing family record for FamilyID: {data['FamilyID']}")
+                # logging.info(f"Updated existing family record for FamilyID: {existing_family.FamilyID}, PersonID: {
+                # child_id}")
             else:
-                # Create new record in FamilyTable
-                family_data = {
-                    'FamilyID': data.get('FamilyID', None),
-                    'FatherID': data.get('FatherID', None),
-                    'MotherID': data.get('MotherID', None),
-                    'ChildID': data.get('ChildID', None),
-                    'HusbOrder': data.get('HusbOrder', None),
-                    'WifeOrder': data.get('WifeOrder', None),
-                    'IsPrivate': data.get('IsPrivate', None),
-                    'Proof': data.get('Proof', None),
-                    'SpouseLabel': data.get('SpouseLabel', None),
-                    'FatherLabel': data.get('FatherLabel', None),
-                    'MotherLabel': data.get('MotherLabel', None),
-                    'SpouseLabelStr': data.get('SpouseLabelStr', None),
-                    'FatherLabelStr': data.get('FatherLabelStr', None),
-                    'MotherLabelStr': data.get('MotherLabelStr', None),
-                    'Note': data.get('Note', None),
-                    'UTCModDate': func.julianday('now') - 2415018.5,
-                }
-                new_family = FamilyTable(**family_data)
-                family_rm_session.add(new_family)
-                logging.info(f"Inserted new family record for FamilyID: {data['FamilyID']}")
+                # Create new record in FamilyTable only if both FatherID and MotherID are present
+                if father_id and mother_id:
+                    family_data = {
+                        'FatherID': father_id,
+                        'MotherID': mother_id,
+                        'ChildID': child_id,  # Ensure ChildID is set
+                        'UTCModDate': func.julianday('now') - 2415018.5,
+                    }
+                    new_family = FamilyTable(**family_data)
+                    family_rm_session.add(new_family)
+                    family_rm_session.flush()  # Ensure the new record is written to the database
+
+                    # Retrieve the FamilyID of the new record
+                    data['FamilyID'] = new_family.FamilyID
+                    # logging.info(f"Inserted new family record and updated FamilyID: {data['FamilyID']}, PersonID: {
+                    # child_id}")
+                # else: logging.warning(f"Skipped inserting family record for PersonID: {child_id} due to missing
+                # FatherID or MotherID.")
 
             processed_count += 1
             if batch_size > 0 and processed_count % batch_size == 0:
@@ -1400,7 +1404,7 @@ def main():
             insert_name(rm_session, processed_data)
             # insert_event(rm_session, processed_data)
             # insert_child(rm_session, processed_data)
-            # insert_family(rm_session, processed_data)
+            insert_family(rm_session, processed_data)
             # insert_dna(rm_session, processed_data)
             # insert_place(rm_session, processed_data)
             # insert_url(rm_session, processed_data)
