@@ -22,7 +22,7 @@ mh_base = MH_Base()
 rm_base = RM_Base()
 
 # Switches
-limit = 00
+limit = 500
 # Ancestry
 ancestry_matchgroups = 1
 ancestry_matchtrees = 1
@@ -44,7 +44,7 @@ mh_icw = 0
 mh_tree = 0
 
 
-def process_table_with_limit(session, table_class, filter_ids, process_func, apply_limit):
+def batch_limit(session, table_class, filter_ids, process_func, apply_limit):
     query = session.query(table_class).filter(table_class.Id.in_(filter_ids))
     if apply_limit > 0:
         query = query.limit(apply_limit)
@@ -319,7 +319,7 @@ def process_ancestry(session: Session, filtered_ids):
                     person_id = hash_id(match_tree.personId)
                     father_id = hash_id(match_tree.fatherId) if match_tree.fatherId is not None else None
                     mother_id = hash_id(match_tree.motherId) if match_tree.motherId is not None else None
-                    color = 25
+                    color = 18
                 else:
                     # If no match_tree is found, generate a default person_id using matchGuid and set color to 27
                     person_id = hash_id(group.matchGuid)
@@ -364,7 +364,7 @@ def process_ancestry(session: Session, filtered_ids):
                     'NameType': 6,
                 }
 
-            match_groups = process_table_with_limit(
+            match_groups = batch_limit(
                 session, Ancestry_matchGroups, filtered_ids.get('Ancestry_matchGroups', []),
                 lambda group: process_matchgroup(session, group), limit
             )
@@ -383,9 +383,8 @@ def process_ancestry(session: Session, filtered_ids):
                     father_id = hash_id(data_source.fatherId) if data_source.fatherId is not None else None
                     mother_id = hash_id(data_source.motherId) if data_source.motherId is not None else None
 
-                    logging.debug(
-                        f"Processing matchtree record: matchid={tree.matchid}, "
-                        f"person_id={person_id}, father_id={father_id}, mother_id={mother_id}")
+                    # logging.debug(f"Processing matchtree record: matchid={tree.matchid}"
+                    #               f" person_id={person_id}, father_id={father_id}, mother_id={mother_id}")
 
                 except ValueError as mte:
                     logging.warning(f"Invalid ID value for tree {tree.matchid}: {str(mte)}. Skipping.")
@@ -409,7 +408,7 @@ def process_ancestry(session: Session, filtered_ids):
                 unique_id = tree.matchid
                 match_group_data = id_mapping.get(unique_id, {})
 
-                logging.debug(f"Match group data for unique_id={unique_id}: {match_group_data}")
+                # logging.debug(f"Match group data for unique_id={unique_id}: {match_group_data}")
 
                 # Update name and sex_value based on match_group_data
                 if tree.relid == '1':
@@ -422,7 +421,7 @@ def process_ancestry(session: Session, filtered_ids):
                     father_id = hash_id(tree.fatherId) if tree.fatherId is not None else father_id
                     mother_id = hash_id(tree.motherId) if tree.motherId is not None else mother_id
                 else:
-                    unique_id = generate_unique_id(tree.given, tree.surname, tree.birthdate)
+                    unique_id = generate_unique_id(tree.given, tree.surname, tree.matchid)
                     surname = tree.surname
                     given = tree.given
                     name_type = 2
@@ -451,7 +450,7 @@ def process_ancestry(session: Session, filtered_ids):
 
             try:
                 # Process match trees with limit and process_matchtree function
-                match_trees = process_table_with_limit(
+                match_trees = batch_limit(
                     session, Ancestry_matchTrees, filtered_ids.get('Ancestry_matchTrees', []),
                     process_matchtree, limit
                 )
@@ -482,7 +481,7 @@ def process_ancestry(session: Session, filtered_ids):
 
             try:
                 # Process Ancestry tree data
-                tree_data = process_table_with_limit(
+                tree_data = batch_limit(
                     session, Ancestry_TreeData, filtered_ids.get('Ancestry_TreeData', []),
                     process_treedata, limit
                 )
@@ -510,7 +509,7 @@ def process_ancestry(session: Session, filtered_ids):
                 }
 
             # Process Ancestry ICW data
-            icw_data = process_table_with_limit(
+            icw_data = batch_limit(
                 session, Ancestry_ICW, filtered_ids.get('Ancestry_ICW', []),
                 process_icw, limit
             )
@@ -536,7 +535,7 @@ def process_ancestry(session: Session, filtered_ids):
 
             try:
                 # Process Ancestry match ethnicity data
-                match_ethnicity_data = process_table_with_limit(
+                match_ethnicity_data = batch_limit(
                     session, Ancestry_matchEthnicity, filtered_ids.get('Ancestry_matchEthnicity', []),
                     process_matchethnicity, limit
                 )
@@ -592,7 +591,7 @@ def process_ancestry(session: Session, filtered_ids):
 
             try:
                 # Process Ancestry ancestor couple data
-                ancestor_couple_data = process_table_with_limit(
+                ancestor_couple_data = batch_limit(
                     session, AncestryAncestorCouple, filtered_ids.get('AncestryAncestorCouple', []),
                     process_ancestorcouple, limit
                 )
@@ -632,7 +631,7 @@ def process_ftdna(session: Session, filtered_ids):
                     'mtHaplo': match.mtHaplo,
                 }
 
-            processed_ftdna_data.extend(process_table_with_limit(
+            processed_ftdna_data.extend(batch_limit(
                 session, FTDNA_Matches2, filtered_ids['FTDNA_Matches2'],
                 process_ftdna_match, limit
             ))
@@ -651,7 +650,7 @@ def process_ftdna(session: Session, filtered_ids):
                     'snpsI': chromo.snpsI,
                 }
 
-            processed_ftdna_data.extend(process_table_with_limit(
+            processed_ftdna_data.extend(batch_limit(
                 session, FTDNA_Chromo2, filtered_ids['FTDNA_Chromo2'],
                 process_ftdna_chromo, limit
             ))
@@ -666,7 +665,7 @@ def process_ftdna(session: Session, filtered_ids):
                     'eKitMatch2': icw.eKitMatch2,
                 }
 
-            processed_ftdna_data.extend(process_table_with_limit(
+            processed_ftdna_data.extend(batch_limit(
                 session, FTDNA_ICW2, filtered_ids['FTDNA_ICW2'],
                 process_ftdna_icw, limit
             ))
@@ -683,7 +682,7 @@ def process_ftdna(session: Session, filtered_ids):
                     'matchID': tree.matchID,
                 }
 
-            processed_ftdna_data.extend(process_table_with_limit(
+            processed_ftdna_data.extend(batch_limit(
                 session, DGTree, filtered_ids['DGTree'],
                 process_dg_tree, limit
             ))
@@ -707,7 +706,7 @@ def process_ftdna(session: Session, filtered_ids):
                     'motherId': individual.motherId,
                 }
 
-            processed_ftdna_data.extend(process_table_with_limit(
+            processed_ftdna_data.extend(batch_limit(
                 session, DGIndividual, filtered_ids['DGIndividual'],
                 process_dg_individual, limit
             ))
@@ -745,7 +744,7 @@ def process_mh(session: Session, filtered_ids):
                     'tree_url': match.tree_url,
                 }
 
-            processed_mh_data.extend(process_table_with_limit(
+            processed_mh_data.extend(batch_limit(
                 session, MH_Match, filtered_ids['MH_Match'],
                 process_mh_match, limit
             ))
@@ -769,7 +768,7 @@ def process_mh(session: Session, filtered_ids):
                     'motherId': ancestor.motherId,
                 }
 
-            processed_mh_data.extend(process_table_with_limit(
+            processed_mh_data.extend(batch_limit(
                 session, MH_Ancestors, filtered_ids['MH_Ancestors'],
                 process_mh_ancestors, limit
             ))
@@ -789,7 +788,7 @@ def process_mh(session: Session, filtered_ids):
                     'snps': chromo.snps,
                 }
 
-            processed_mh_data.extend(process_table_with_limit(
+            processed_mh_data.extend(batch_limit(
                 session, MH_Chromo, filtered_ids['MH_Chromo'],
                 process_mh_chromo, limit
             ))
@@ -808,7 +807,7 @@ def process_mh(session: Session, filtered_ids):
                     'triSegments': icw.triSegments,
                 }
 
-            processed_mh_data.extend(process_table_with_limit(
+            processed_mh_data.extend(batch_limit(
                 session, MH_ICW, filtered_ids['MH_ICW'],
                 process_mh_icw, limit
             ))
@@ -823,7 +822,7 @@ def process_mh(session: Session, filtered_ids):
                     'updated_date': tree.updated_date,
                 }
 
-            processed_mh_data.extend(process_table_with_limit(
+            processed_mh_data.extend(batch_limit(
                 session, MH_Tree, filtered_ids['MH_Tree'],
                 process_mh_tree, limit
             ))
@@ -835,7 +834,7 @@ def process_mh(session: Session, filtered_ids):
 
 
 def insert_fact_type(fact_rm_session: Session):
-    logging.getLogger('insert_fact_type')
+    logger = logging.getLogger('insert_fact_type')
 
     try:
         # Check if Fact Type 'DNA Kit' already exists
@@ -856,12 +855,11 @@ def insert_fact_type(fact_rm_session: Session):
                 UTCModDate=func.julianday('now') - 2415018.5,
             )
             fact_rm_session.add(new_fact_type)
-            logging.info("Fact Type 'DNA Kit' inserted into FactTypeTable.")
-
+            fact_rm_session.commit()  # Commit the new record
+            logger.info("Fact Type 'DNA Kit' inserted into FactTypeTable.")
         else:
             # Update existing Fact Type 'DNA Kit'
             fact_type.OwnerType = 0
-            fact_type.Name = 'DNA Kit'
             fact_type.Abbrev = 'DNA Kit'
             fact_type.GedcomTag = 'EVEN'
             fact_type.UseValue = 1
@@ -870,23 +868,22 @@ def insert_fact_type(fact_rm_session: Session):
             fact_type.Sentence = '[person] had a DNA test performed. View DNA Tab in profile to view matches.'
             fact_type.Flags = 2147483647
             fact_type.UTCModDate = func.julianday('now') - 2415018.5
-            fact_rm_session.commit()
-            logging.info("Fact Type 'DNA Kit' updated in FactTypeTable.")
-
+            fact_rm_session.commit()  # Commit the updates
+            logger.info("Fact Type 'DNA Kit' updated in FactTypeTable.")
     except Exception as e:
-        logging.error(f"Error inserting or updating Fact Type 'DNA Kit' in FactTypeTable: {e}")
+        logger.error(f"Error inserting or updating Fact Type 'DNA Kit' in FactTypeTable: {e}")
         fact_rm_session.rollback()
         raise
     finally:
         fact_rm_session.close()
 
 
-def insert_person(person_rm_session: Session, processed_data, batch_size=limit):
-    logging.getLogger('insert_person')
-    logging.info("Inserting or updating individuals in PersonTable...")
+def insert_person(person_rm_session: Session, processed_data, batch_size=100):
+    logger = logging.getLogger('insert_person')
+    logger.info("Inserting or updating individuals in PersonTable...")
 
     if person_rm_session is None:
-        logging.error("Invalid person_rm_session object provided")
+        logger.error("Invalid person_rm_session object provided")
         raise ValueError("A valid Session object must be provided")
 
     try:
@@ -898,13 +895,14 @@ def insert_person(person_rm_session: Session, processed_data, batch_size=limit):
             unique_id = data.get('unique_id')
             sex_value = data.get('sex', '')
 
-            logging.debug(
-                f"Processing record: PersonID: {person_id}, UniqueID: {unique_id}, sex: {sex_value}, relid: {relid}")
+            logger.debug(f"Processing record: PersonID: {person_id}, "
+                         f"UniqueID: {unique_id}, sex: {sex_value}, relid: {relid}")
 
             if person_id is None and not unique_id:
                 blank_record_count += 1
-                logging.warning(f"Potentially problematic record: PersonID: None, UniqueID: None, sex: {sex_value}, "
-                                f"relid: {relid}")
+                logger.warning(f"Potentially problematic record: PersonID: None, "
+                               f"UniqueID: None, sex: {sex_value}, relid: {relid}")
+                continue  # Skip processing if both PersonID and UniqueID are missing
 
             person_data = {
                 'UniqueID': unique_id,
@@ -927,25 +925,26 @@ def insert_person(person_rm_session: Session, processed_data, batch_size=limit):
                 if relid != '1':
                     for key, value in person_data.items():
                         setattr(existing_person, key, value)
-                    logging.debug(f"Updated existing record: PersonID: {person_id}, UniqueID: {unique_id}")
+                    logger.debug(f"Updated existing record: PersonID: {person_id}, UniqueID: {unique_id}")
                 else:
                     setattr(existing_person, 'UTCModDate', person_data['UTCModDate'])
-                    logging.debug(f"Updated existing record (relid=1): PersonID: {person_id}, UniqueID: {unique_id}")
+                    logger.debug(f"Updated existing record (relid=1): PersonID: {person_id}, UniqueID: {unique_id}")
             else:
                 new_person = PersonTable(**person_data)
                 person_rm_session.add(new_person)
-                logging.debug(f"Inserted new record: PersonID: {person_id}, UniqueID: {unique_id}")
+                logger.debug(f"Inserted new record: PersonID: {person_id}, UniqueID: {unique_id}")
 
             processed_count += 1
             if batch_size > 0 and processed_count % batch_size == 0:
                 person_rm_session.flush()
+                logger.info(f"Flushed batch of {batch_size} records")
 
         person_rm_session.commit()
-        logging.info(f"Processed {processed_count} person records. {blank_record_count} records had neither PersonID "
-                     f"nor UniqueID.")
+        logger.info(f"Processed {processed_count} person records. {blank_record_count} "
+                    f"records had neither PersonID nor UniqueID.")
 
     except Exception as e:
-        logging.error(f"Error inserting or updating PersonTable: {e}")
+        logger.error(f"Error inserting or updating PersonTable: {e}")
         person_rm_session.rollback()
         raise
 

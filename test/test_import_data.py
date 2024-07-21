@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from import_data import (
-    process_table_with_limit,
+    batch_limit,
     generate_unique_id,
     check_for_duplicates,
     filter_selected_kits,
@@ -46,7 +46,7 @@ def test_generate_unique_id():
 def test_process_table_with_limit():
     # Basic test to check if function returns a list
     mock_data = [1, 2, 3]
-    result = process_table_with_limit(session, None, [1, 2, 3], lambda x: x, 2)
+    result = batch_limit(session, None, [1, 2, 3], lambda x: x, 2)
     assert isinstance(result, list)
     assert len(result) == 2
 
