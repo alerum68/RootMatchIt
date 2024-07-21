@@ -36,7 +36,6 @@ def user_kit_data(session):
             dna_kits.append(
                 (5 if kit.company == 'MyHeritage' else 3, guid, *(name.rsplit(' ', 1) if ' ' in name else (name, '')))
             )
-        logging.info("Extracted user kits successfully.")
     except Exception as e:
         logging.error(f"Error extracting user kit data: {e}")
     return dna_kits
@@ -80,7 +79,6 @@ def prompt_user_for_kits(dna_kits):
                 company_id = company_map.get(idx.lower())
                 if company_id:
                     selected_kits.extend([kit for kit in dna_kits if kit[0] == company_id])
-    print(f"Selected Kits:{selected_kits}")
     return selected_kits
 
 
