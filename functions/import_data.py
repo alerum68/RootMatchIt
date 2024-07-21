@@ -305,6 +305,7 @@ def process_ancestry(session: Session, filtered_ids):
         hash_int = int(hash_hex[:8], 16)
         hashed_id = (hash_int % 9999999) + 100
         id_mapping[original_id] = hashed_id
+        # logging.debug(f"Hashing ID: original_id={original_id}, hashed_id={hashed_id}")
         return hashed_id
 
     try:
@@ -994,8 +995,7 @@ def insert_name(name_rm_session: Session, processed_data, batch_size=limit):
             # Check if a name record already exists for this person and name type
             existing_name = None
             if person_id is not None:
-                existing_name = name_rm_session.query(NameTable).filter_by(OwnerID=person_id,
-                                                                           NameType=name_data['NameType']).first()
+                existing_name = name_rm_session.query(NameTable).filter_by(OwnerID=person_id).first()
 
             if existing_name:
                 # Update existing record
