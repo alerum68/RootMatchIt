@@ -4,19 +4,18 @@
 
 **What you'll need:**
 
-* Your DNAGedcom databasefile (obtained from the DNAGedcom client)
+* Your DNAGedcom database file (obtained from the DNAGedcom client).
 * An empty RootsMagic 10 database
 
 **Getting Started:**
 
 1. **Prepare your RootsMagic Database:**
     * Open RootsMagic 10 and create a new, empty database.
-    * Close RootsMagic 10 after creating the database. **Important:** This allows RootsMatchIt to properly access the file.
+    * Close RootsMagic 10 after creating the database. **Important:** This allows RootsMatchIt to properly access the file.    * 
 
 2. **Place your files:**
     * Copy your DNAGedcom file into the `./db` directory within the RootsMatchIt folder.
     *  Place the empty RootsMagic 10 database file (**.RMTREE**) in the same `./db` directory.
-
 
 3. **Rebuild Indices:**
     * In RootsMagic 10, go to Tools > Rebuild Index.
