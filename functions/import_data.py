@@ -12,7 +12,7 @@ from setup_logging import setup_logging
 # Remote Imports
 import logging
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import SQLAlchemyError, MultipleResultsFound, NoResultFound
+from sqlalchemy.exc import SQLAlchemyError, MultipleResultsFound
 import uuid
 import hashlib
 
@@ -22,7 +22,7 @@ mh_base = MH_Base()
 rm_base = RM_Base()
 
 # Switches
-limit = 0
+limit = 00
 # Ancestry
 ancestry_matchgroups = 1
 ancestry_matchtrees = 1
@@ -91,55 +91,78 @@ def check_for_duplicates(session: Session, unique_id: str, **kwargs):
         return None
 
 
-def process_and_import_profiles(rm_session: Session, selected_kits):
+def import_profiles(rm_session: Session, selected_kits):
+    def get_gender_input(profile_name_given, profile_name_surname, profile_guid_value):
+        # Prompt the user for gender input and validate.
+        while True:
+            gender = input(f"Enter gender for kit {profile_name_given} {profile_name_surname}, "
+                           f"GUID {profile_guid_value} ((M)ale, (F)emale, (U)nknown): ").strip().upper()
+            if gender in ['M', 'MALE']:
+                return 0
+            elif gender in ['F', 'FEMALE']:
+                return 1
+            elif gender in ['U', 'UNKNOWN']:
+                return 2
+            else:
+                print("Invalid input. Please enter M/Male, F/Female, or U/Unknown.")
+
     for kit_details in selected_kits:
         id_value, guid_value, name_given, name_surname = kit_details
 
-        logging.info(f"Processing kit: {id_value}, GUID: {guid_value}, Name: {name_given} {name_surname}")
-
         try:
-            # Query to get the PersonTable record by UniqueID
-            try:
-                person_record = rm_session.query(PersonTable).filter_by(UniqueID=guid_value).one()
-                logging.info(f"Found existing record in PersonTable for UniqueID: {guid_value}.")
-            except NoResultFound:
-                # Create a new PersonTable entry if none exists
+            # Attempt to fetch existing person record by UniqueID
+            person_record = rm_session.query(PersonTable).filter_by(UniqueID=guid_value).one_or_none()
+
+            if person_record:
+                # Use existing gender value if it is already set
+                if person_record.Sex not in [0, 1]:
+                    # Prompt user for gender input if not already set
+                    gender_value = get_gender_input(name_given, name_surname, guid_value)
+                else:
+                    gender_value = person_record.Sex
+
+                # Update existing record with new gender value if needed
+                if person_record.Sex != gender_value:
+                    person_record.Sex = gender_value
+                    person_record.UTCModDate = func.julianday('now') - 2415018.5
+
+            else:
+                # Prompt user for gender input and create a new PersonTable entry
+                gender_value = get_gender_input(name_given, name_surname, guid_value)
                 person_record = PersonTable(
                     UniqueID=guid_value,
                     Color=1,
                     UTCModDate=func.julianday('now') - 2415018.5,
+                    Sex=gender_value
                 )
                 rm_session.add(person_record)
-                rm_session.commit()
-                logging.info(f"Inserted new record in PersonTable for UniqueID: {guid_value}")
 
-            # Retrieve PersonID
+            # Commit to save the changes or the new record
+            rm_session.commit()
+
+            # Retrieve PersonID and process NameTable records
             person_id = person_record.PersonID
-
-            # Check if a name record already exists for this person and name type
-            existing_name = rm_session.query(NameTable).filter_by(OwnerID=person_id, NameType=2).first()
+            existing_name = rm_session.query(NameTable).filter_by(OwnerID=person_id, NameType=6).first()
 
             if existing_name:
-                # Update existing record
+                # Update existing name record
                 existing_name.Given = name_given
                 existing_name.Surname = name_surname
                 existing_name.IsPrimary = 1
-
             else:
-                # Create new record in NameTable
+                # Create a new name record in NameTable
                 profile_name_table = NameTable(
                     OwnerID=person_id,
                     Given=name_given,
                     Surname=name_surname,
                     IsPrimary=1,
-                    NameType=2,
+                    NameType=6,
                 )
                 rm_session.add(profile_name_table)
-                logging.info(f"Inserted record into NameTable for PersonID: {person_id}")
 
         except MultipleResultsFound:
-            logging.error(
-                f"Multiple records found for UniqueID: {guid_value}. Please check the database for duplicates.")
+            logging.error(f"Multiple records found for UniqueID: {guid_value}. "
+                          f"Please check the database for duplicates.")
             rm_session.rollback()
         except Exception as e:
             logging.error(f"Error processing kit: {id_value}, GUID: {guid_value}, Name: {name_given} {name_surname}")
@@ -285,20 +308,40 @@ def process_ancestry(session: Session, filtered_ids):
         return hashed_id
 
     try:
-        # Check condition before calling process_matchgroups
+        id_mapping = {}
         if ancestry_matchgroups and filtered_ids.get('Ancestry_matchGroups'):
             def process_matchgroup(mg_session, group):
+                # Step 1: Query Ancestry_matchTrees using matchGuid
                 match_tree = mg_session.query(Ancestry_matchTrees).filter_by(matchid=group.matchGuid).first()
-                person_id = hash_id(match_tree.personId) if match_tree and match_tree.personId is not None else None
 
+                # Step 2: Initialize variables
+                if match_tree and match_tree.personId is not None:
+                    person_id = hash_id(match_tree.personId)
+                    father_id = hash_id(match_tree.fatherId) if match_tree.fatherId is not None else None
+                    mother_id = hash_id(match_tree.motherId) if match_tree.motherId is not None else None
+                    color = 25
+                else:
+                    # If no match_tree is found, generate a default person_id using matchGuid and set color to 27
+                    person_id = hash_id(group.matchGuid)
+                    father_id = None
+                    mother_id = None
+                    color = 27
+
+                # Extract name and sex information
                 name = group.matchTestDisplayName
                 given, surname = (name.split()[0], name.split()[-1]) if len(name.split()) > 1 else (name, "")
 
+                subject_gender = group.subjectGender
+                sex = 1 if subject_gender == 'F' else 0 if subject_gender == 'M' else 2  # Default or unknown value
+
+                # Return the processed record
                 return {
                     'PersonID': person_id,
+                    'FatherID': father_id,
+                    'MotherID': mother_id,
                     'unique_id': group.matchGuid,
-                    'sex': 1 if group.subjectGender == 'F' else 0 if group.subjectGender == 'M' else 2,
-                    'color': 25,
+                    'sex': sex,
+                    'color': color,
                     'Given': given,
                     'Surname': surname,
                     'groupName': group.groupName,
@@ -321,60 +364,70 @@ def process_ancestry(session: Session, filtered_ids):
                     'NameType': 6,
                 }
 
-            # Process Ancestry match groups
             match_groups = process_table_with_limit(
                 session, Ancestry_matchGroups, filtered_ids.get('Ancestry_matchGroups', []),
                 lambda group: process_matchgroup(session, group), limit
             )
 
-            # Create a dictionary to store match_groups data for quick lookup
-            match_groups_dict = {group['unique_id']: group for group in match_groups}
-
-            # Extend processed data with the processed match groups
+            id_mapping = {group['unique_id']: group for group in match_groups}
             processed_ancestry_data.extend(match_groups or [])
 
         if ancestry_matchtrees and filtered_ids.get('Ancestry_matchTrees'):
             def process_matchtree(tree, person_data=None):
                 try:
-                    # Use person_data if provided, otherwise use tree
+                    # Choose data source
                     data_source = person_data if person_data else tree
 
+                    # Get IDs
                     person_id = hash_id(data_source.personId) if data_source.personId is not None else None
                     father_id = hash_id(data_source.fatherId) if data_source.fatherId is not None else None
                     mother_id = hash_id(data_source.motherId) if data_source.motherId is not None else None
-                    # logging.debug(f"Processed IDs: person_id={person_id},
-                    # father_id={father_id}, mother_id={mother_id}")
+
+                    logging.debug(
+                        f"Processing matchtree record: matchid={tree.matchid}, "
+                        f"person_id={person_id}, father_id={father_id}, mother_id={mother_id}")
+
                 except ValueError as mte:
                     logging.warning(f"Invalid ID value for tree {tree.matchid}: {str(mte)}. Skipping.")
                     return None
 
+                # Determine sex value
                 sex_value = 2
                 if data_source.personId is not None:
                     father_match = session.query(Ancestry_matchTrees).filter(
-                        Ancestry_matchTrees.fatherId == data_source.personId  # Use original ID for query
+                        Ancestry_matchTrees.fatherId == data_source.personId
                     ).first()
                     if father_match:
                         sex_value = 0
                     else:
                         mother_match = session.query(Ancestry_matchTrees).filter(
-                            Ancestry_matchTrees.motherId == data_source.personId  # Use original ID for query
+                            Ancestry_matchTrees.motherId == data_source.personId
                         ).first()
                         if mother_match:
-                            sex_value = 1  # Female if found in motherId
+                            sex_value = 1
 
+                unique_id = tree.matchid
+                match_group_data = id_mapping.get(unique_id, {})
+
+                logging.debug(f"Match group data for unique_id={unique_id}: {match_group_data}")
+
+                # Update name and sex_value based on match_group_data
                 if tree.relid == '1':
-                    unique_id = tree.matchid
-                    # Use match_groups data if available
-                    match_group_data = match_groups_dict.get(unique_id, {})
                     surname = match_group_data.get('Surname', tree.surname)
                     given = match_group_data.get('Given', tree.given)
                     name_type = match_group_data.get('NameType', 6)
+                    sex_value = match_group_data.get('sex', sex_value)
+
+                    # Ensure FatherID and MotherID are included
+                    father_id = hash_id(tree.fatherId) if tree.fatherId is not None else father_id
+                    mother_id = hash_id(tree.motherId) if tree.motherId is not None else mother_id
                 else:
                     unique_id = generate_unique_id(tree.given, tree.surname, tree.birthdate)
                     surname = tree.surname
                     given = tree.given
                     name_type = 2
 
+                # Return the processed record
                 return {
                     'unique_id': unique_id,
                     'sex': sex_value,
@@ -397,12 +450,13 @@ def process_ancestry(session: Session, filtered_ids):
                 }
 
             try:
-                # Process Ancestry match trees
+                # Process match trees with limit and process_matchtree function
                 match_trees = process_table_with_limit(
                     session, Ancestry_matchTrees, filtered_ids.get('Ancestry_matchTrees', []),
                     process_matchtree, limit
                 )
 
+                # Extend processed ancestry data
                 processed_ancestry_data.extend(match_trees or [])
             except Exception as e:
                 logging.error(f"An error occurred while processing Ancestry match trees: {str(e)}")
@@ -837,19 +891,28 @@ def insert_person(person_rm_session: Session, processed_data, batch_size=limit):
 
     try:
         processed_count = 0
+        blank_record_count = 0
         for data in processed_data:
-            # Get PersonID from processed_data, checking both 'PersonID' and 'personId'
             person_id = data.get('PersonID')
+            relid = data.get('relid')
+            unique_id = data.get('unique_id')
+            sex_value = data.get('sex', '')
 
-            # Map processed_data to PersonTable columns
+            logging.debug(
+                f"Processing record: PersonID: {person_id}, UniqueID: {unique_id}, sex: {sex_value}, relid: {relid}")
+
+            if person_id is None and not unique_id:
+                blank_record_count += 1
+                logging.warning(f"Potentially problematic record: PersonID: None, UniqueID: None, sex: {sex_value}, "
+                                f"relid: {relid}")
+
             person_data = {
-                'UniqueID': data.get('unique_id', ''),
-                'Sex': data.get('sex', ''),
+                'UniqueID': unique_id,
+                'Sex': sex_value,
                 'Color': data.get('color', ''),
                 'UTCModDate': func.julianday('now') - 2415018.5,
             }
 
-            # Add PersonID to person_data if it's not None
             if person_id is not None:
                 person_data['PersonID'] = person_id
 
@@ -857,25 +920,29 @@ def insert_person(person_rm_session: Session, processed_data, batch_size=limit):
             existing_person = None
             if person_id is not None:
                 existing_person = person_rm_session.query(PersonTable).filter_by(PersonID=person_id).first()
-            if not existing_person and person_data['UniqueID']:
-                existing_person = person_rm_session.query(PersonTable).filter_by(
-                    UniqueID=person_data['UniqueID']).first()
+            if not existing_person and unique_id:
+                existing_person = person_rm_session.query(PersonTable).filter_by(UniqueID=unique_id).first()
 
             if existing_person:
-                # Update existing record
-                for key, value in person_data.items():
-                    setattr(existing_person, key, value)
+                if relid != '1':
+                    for key, value in person_data.items():
+                        setattr(existing_person, key, value)
+                    logging.debug(f"Updated existing record: PersonID: {person_id}, UniqueID: {unique_id}")
+                else:
+                    setattr(existing_person, 'UTCModDate', person_data['UTCModDate'])
+                    logging.debug(f"Updated existing record (relid=1): PersonID: {person_id}, UniqueID: {unique_id}")
             else:
-                # Create new record
                 new_person = PersonTable(**person_data)
                 person_rm_session.add(new_person)
+                logging.debug(f"Inserted new record: PersonID: {person_id}, UniqueID: {unique_id}")
 
             processed_count += 1
             if batch_size > 0 and processed_count % batch_size == 0:
                 person_rm_session.flush()
 
         person_rm_session.commit()
-        logging.info(f"Processed {processed_count} person records.")
+        logging.info(f"Processed {processed_count} person records. {blank_record_count} records had neither PersonID "
+                     f"nor UniqueID.")
 
     except Exception as e:
         logging.error(f"Error inserting or updating PersonTable: {e}")
@@ -1173,8 +1240,8 @@ def insert_child(child_rm_session: Session, processed_data, batch_size=limit):
 
             # Check if both ChildID and FamilyID are present
             if not child_id or not family_id:
-                logging.warning(f"Skipped processing record due to missing ChildID or FamilyID: "
-                                f"ChildID={child_id}, FamilyID={family_id}")
+                # logging.warning(f"Skipped processing record due to missing ChildID or FamilyID: "
+                #                 f"ChildID={child_id}, FamilyID={family_id}")
                 continue
 
             # Check if a child record already exists for the given ChildID and FamilyID
@@ -1182,7 +1249,7 @@ def insert_child(child_rm_session: Session, processed_data, batch_size=limit):
                 ChildID=child_id, FamilyID=family_id).first()
 
             if existing_child:
-                # Update existing record
+                # Update existing record in ChildTable
                 for key, value in data.items():
                     setattr(existing_child, key, value)
                 existing_child.UTCModDate = func.julianday('now') - 2415018.5
@@ -1199,6 +1266,14 @@ def insert_child(child_rm_session: Session, processed_data, batch_size=limit):
                 child_rm_session.add(new_child)
                 logging.info(
                     f"Inserted new child record for ChildID: {child_id} and FamilyID: {family_id}")
+
+            # Update PersonTable.ParentID with FamilyID
+            person = child_rm_session.query(PersonTable).filter_by(PersonID=child_id).first()
+            if person:
+                person.ParentID = family_id
+                logging.info(f"Updated ParentID for PersonID: {child_id} to FamilyID: {family_id}")
+            else:
+                logging.warning(f"Person record not found for PersonID: {child_id}")
 
             processed_count += 1
             if batch_size > 0 and processed_count % batch_size == 0:
@@ -1228,11 +1303,24 @@ def insert_family(family_rm_session: Session, processed_data, batch_size=limit):
             mother_id = data.get('MotherID')
             child_id = data.get('PersonID')  # Ensure we're getting the PersonID as ChildID
 
-            # Check if a family record already exists for the given FamilyID
+            logging.debug(f"Processing family record: FamilyID: {family_id}, "
+                          f"FatherID: {father_id}, MotherID: {mother_id}, ChildID: {child_id}")
+
+            # Check if both father_id and mother_id are blank
+            if not father_id and not mother_id:
+                # Update PersonTable.Color to "27" for records with no MatchTree data.
+                person = family_rm_session.query(PersonTable).filter_by(PersonID=child_id).first()
+                if person:
+                    person.Color = '27'
+                    logging.debug(f"Updated PersonTable.Color to '27' for PersonID: {child_id}")
+                else:
+                    logging.warning(f"Person not found for PersonID: {child_id} when trying to update Color")
+
+            # Check if a family record already exists
+            existing_family = None
             if family_id:
-                existing_family = family_rm_session.query(FamilyTable).filter_by(
-                    FamilyID=family_id).first()
-            else:
+                existing_family = family_rm_session.query(FamilyTable).filter_by(FamilyID=family_id).first()
+            if not existing_family and father_id and mother_id:
                 existing_family = family_rm_session.query(FamilyTable).filter(
                     FamilyTable.FatherID == father_id,
                     FamilyTable.MotherID == mother_id
@@ -1245,27 +1333,23 @@ def insert_family(family_rm_session: Session, processed_data, batch_size=limit):
                         setattr(existing_family, key, value)
                 existing_family.ChildID = child_id  # Update ChildID
                 existing_family.UTCModDate = func.julianday('now') - 2415018.5
-                # logging.info(f"Updated existing family record for FamilyID: {existing_family.FamilyID}, PersonID: {
-                # child_id}")
+                logging.debug(f"Updated existing family record: FamilyID: "
+                              f"{existing_family.FamilyID}, ChildID: {child_id}")
             else:
-                # Create new record in FamilyTable only if both FatherID and MotherID are present
-                if father_id and mother_id:
-                    family_data = {
-                        'FatherID': father_id,
-                        'MotherID': mother_id,
-                        'ChildID': child_id,  # Ensure ChildID is set
-                        'UTCModDate': func.julianday('now') - 2415018.5,
-                    }
-                    new_family = FamilyTable(**family_data)
-                    family_rm_session.add(new_family)
-                    family_rm_session.flush()  # Ensure the new record is written to the database
+                # Create new record in FamilyTable
+                family_data = {
+                    'FatherID': father_id,
+                    'MotherID': mother_id,
+                    'ChildID': child_id,
+                    'UTCModDate': func.julianday('now') - 2415018.5,
+                }
+                new_family = FamilyTable(**family_data)
+                family_rm_session.add(new_family)
+                family_rm_session.flush()  # Ensure the new record is written to the database
 
-                    # Retrieve the FamilyID of the new record
-                    data['FamilyID'] = new_family.FamilyID
-                    # logging.info(f"Inserted new family record and updated FamilyID: {data['FamilyID']}, PersonID: {
-                    # child_id}")
-                # else: logging.warning(f"Skipped inserting family record for PersonID: {child_id} due to missing
-                # FatherID or MotherID.")
+                # Retrieve the FamilyID of the new record
+                data['FamilyID'] = new_family.FamilyID
+                logging.debug(f"Inserted new family record: FamilyID: {data['FamilyID']}, ChildID: {child_id}")
 
             processed_count += 1
             if batch_size > 0 and processed_count % batch_size == 0:
@@ -1400,12 +1484,14 @@ def main():
             logging.info(f"Type: {kit[0]}, GUID: {kit[1]}, Name: {kit[2]} {kit[3]}")
 
         filtered_ids = filter_selected_kits(dg_session, selected_kits)
-        process_and_import_profiles(rm_session, selected_kits)
+        import_profiles(rm_session, selected_kits)
         # Process different providers and combine into processed_data.
         processed_ancestry_data = process_ancestry(dg_session, filtered_ids)
         processed_ftdna_data = process_ftdna(dg_session, filtered_ids)
         processed_mh_data = process_mh(dg_session, filtered_ids)
         processed_data = processed_ancestry_data + processed_ftdna_data + processed_mh_data
+
+        # logging.info(processed_ancestry_data)
 
         try:
             insert_fact_type(rm_session)
