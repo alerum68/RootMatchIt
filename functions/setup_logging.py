@@ -27,7 +27,7 @@ def setup_logging():
         root_logger.addHandler(file_handler_error)
 
         # Output for info and debug to 'DG2RM.log'
-        file_handler_info = RotatingFileHandler(os.path.join(log_dir, 'DG2RM.log'), maxBytes=1000000, backupCount=3,
+        file_handler_info = RotatingFileHandler(os.path.join(log_dir, 'DG2RM.log'), maxBytes=1000000, backupCount=5,
                                                 encoding='utf-8')
         file_handler_info.setLevel(logging.INFO)
         file_handler_info.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
