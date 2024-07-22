@@ -44,13 +44,14 @@ mh_icw = 0
 mh_tree = 0
 
 
+# Set a batch limit via the Limit global variable
 def batch_limit(session, table_class, filter_ids, process_func, apply_limit):
     query = session.query(table_class).filter(table_class.Id.in_(filter_ids))
     if apply_limit > 0:
         query = query.limit(apply_limit)
     limited_data = query.all()
 
-    # Fetch related person data for Ancestry_matchTrees only
+    # Fetch related person data for Ancestry_matchTrees
     processed_data = []
     for item in limited_data:
         if isinstance(item, Ancestry_matchTrees):
@@ -62,6 +63,7 @@ def batch_limit(session, table_class, filter_ids, process_func, apply_limit):
     return processed_data[:apply_limit] if apply_limit > 0 else processed_data
 
 
+# Generate UUIDs
 def generate_unique_id(*args) -> str:
     filtered_args = [str(arg) for arg in args if arg]
     unique_str = ' '.join(filtered_args)
@@ -70,6 +72,7 @@ def generate_unique_id(*args) -> str:
     return unique_id
 
 
+# Generate a hashed version of PersonID, FatherID, and MotherID to fix DnaGedcom ID size
 def hash_id(original_id, id_mapping):
     if original_id is None:
         return None
@@ -84,6 +87,7 @@ def hash_id(original_id, id_mapping):
     return hashed_id
 
 
+# A check for duplicate records.
 def check_for_duplicates(session: Session, unique_id: str, **kwargs):
     logging.getLogger('get_or_create_person')
     try:
@@ -103,88 +107,7 @@ def check_for_duplicates(session: Session, unique_id: str, **kwargs):
         return None
 
 
-def import_profiles(rm_session: Session, selected_kits):
-    def get_gender_input(profile_name_given, profile_name_surname, profile_guid_value):
-        # Prompt the user for gender input and validate.
-        while True:
-            gender = input(f"Enter gender for kit {profile_name_given} {profile_name_surname}, "
-                           f"GUID {profile_guid_value} ((M)ale, (F)emale, (U)nknown): ").strip().upper()
-            if gender in ['M', 'MALE']:
-                return 0
-            elif gender in ['F', 'FEMALE']:
-                return 1
-            elif gender in ['U', 'UNKNOWN']:
-                return 2
-            else:
-                print("Invalid input. Please enter M/Male, F/Female, or U/Unknown.")
-
-    for kit_details in selected_kits:
-        id_value, guid_value, name_given, name_surname = kit_details
-
-        try:
-            # Attempt to fetch existing person record by UniqueID
-            person_record = rm_session.query(PersonTable).filter_by(UniqueID=guid_value).one_or_none()
-
-            if person_record:
-                # Use existing gender value if it is already set
-                if person_record.Sex not in [0, 1]:
-                    # Prompt user for gender input if not already set
-                    gender_value = get_gender_input(name_given, name_surname, guid_value)
-                else:
-                    gender_value = person_record.Sex
-
-                # Update existing record with new gender value if needed
-                if person_record.Sex != gender_value:
-                    person_record.Sex = gender_value
-                    person_record.UTCModDate = func.julianday('now') - 2415018.5
-
-            else:
-                # Prompt user for gender input and create a new PersonTable entry
-                gender_value = get_gender_input(name_given, name_surname, guid_value)
-                person_record = PersonTable(
-                    UniqueID=guid_value,
-                    Color=1,
-                    UTCModDate=func.julianday('now') - 2415018.5,
-                    Sex=gender_value
-                )
-                rm_session.add(person_record)
-
-            # Commit to save the changes or the new record
-            rm_session.commit()
-
-            # Retrieve PersonID and process NameTable records
-            person_id = person_record.PersonID
-            existing_name = rm_session.query(NameTable).filter_by(OwnerID=person_id, NameType=6).first()
-
-            if existing_name:
-                # Update existing name record
-                existing_name.Given = name_given
-                existing_name.Surname = name_surname
-                existing_name.IsPrimary = 1
-            else:
-                # Create a new name record in NameTable
-                profile_name_table = NameTable(
-                    OwnerID=person_id,
-                    Given=name_given,
-                    Surname=name_surname,
-                    IsPrimary=1,
-                    NameType=6,
-                )
-                rm_session.add(profile_name_table)
-
-        except MultipleResultsFound:
-            logging.error(f"Multiple records found for UniqueID: {guid_value}. "
-                          f"Please check the database for duplicates.")
-            rm_session.rollback()
-        except Exception as e:
-            logging.error(f"Error processing kit: {id_value}, GUID: {guid_value}, Name: {name_given} {name_surname}")
-            logging.exception(e)
-            rm_session.rollback()
-
-    rm_session.commit()
-    logging.info("Inserted or updated DNA Kits and Profiles.")
-
-
+# Filter results based on kits selected via select_kits function.
 def filter_selected_kits(filter_session: Session, f_selected_kits):
     global ancestry_matchgroups, ancestry_matchtrees, ancestry_treedata, ancestry_icw, \
         ancestry_ancestorcouple, ancestry_matchethnicity
@@ -299,6 +222,133 @@ def filter_selected_kits(filter_session: Session, f_selected_kits):
     return test_ids
 
 
+# Create the DNA Kit FactType if not present.  For future integration with existing tree.
+def insert_fact_type(fact_rm_session: Session):
+    logging.getLogger('insert_fact_type')
+
+    try:
+        # Check if Fact Type 'DNA Kit' already exists
+        fact_type = fact_rm_session.query(FactTypeTable).filter_by(Name='DNA Kit').first()
+
+        if not fact_type:
+            # Create a new Fact Type 'DNA Kit' if it doesn't exist
+            new_fact_type = FactTypeTable(
+                OwnerType=0,
+                Name='DNA Kit',
+                Abbrev='DNA Kit',
+                GedcomTag='EVEN',
+                UseValue=1,
+                UseDate=0,
+                UsePlace=0,
+                Sentence='[person] had a DNA test performed. View DNA Tab in profile to view matches.',
+                Flags=2147483647,
+                UTCModDate=func.julianday('now') - 2415018.5,
+            )
+            fact_rm_session.add(new_fact_type)
+            fact_rm_session.commit()
+            logging.info("Fact Type 'DNA Kit' inserted into FactTypeTable.")
+        else:
+            # Update existing Fact Type 'DNA Kit'
+            fact_type.OwnerType = 0
+            fact_type.Abbrev = 'DNA Kit'
+            fact_type.GedcomTag = 'EVEN'
+            fact_type.UseValue = 1
+            fact_type.UseDate = 0
+            fact_type.UsePlace = 0
+            fact_type.Sentence = '[person] had a DNA test performed. View DNA Tab in profile to view matches.'
+            fact_type.Flags = 2147483647
+            fact_type.UTCModDate = func.julianday('now') - 2415018.5
+            fact_rm_session.commit()
+            logging.info("Fact Type 'DNA Kit' updated in FactTypeTable.")
+    except Exception as e:
+        logging.error(f"Error inserting or updating Fact Type 'DNA Kit' in FactTypeTable: {e}")
+        fact_rm_session.rollback()
+        raise
+    finally:
+        fact_rm_session.close()
+
+
+# Import Ancestry Profiles and FTDNA and MyHeritage DNA Kits.
+def import_profiles(rm_session: Session, selected_kits):
+    def get_gender_input(profile_name_given, profile_name_surname, profile_guid_value):
+        # Manually enter gender for each Profile or DNA Kit.
+        while True:
+            gender = input(f"Enter gender for kit {profile_name_given} {profile_name_surname}, "
+                           f"GUID {profile_guid_value} ((M)ale, (F)emale, (U)nknown): ").strip().upper()
+            if gender in ['M', 'MALE']:
+                return 0
+            elif gender in ['F', 'FEMALE']:
+                return 1
+            elif gender in ['U', 'UNKNOWN']:
+                return 2
+            else:
+                print("Invalid input. Please enter M/Male, F/Female, or U/Unknown.")
+
+    for kit_details in selected_kits:
+        id_value, guid_value, name_given, name_surname = kit_details
+
+        try:
+            # Attempt to fetch existing person record by UniqueID
+            person_record = rm_session.query(PersonTable).filter_by(UniqueID=guid_value).one_or_none()
+
+            if person_record:
+                # Use existing gender value if it is already set
+                if person_record.Sex not in [0, 1]:
+                    gender_value = get_gender_input(name_given, name_surname, guid_value)
+                else:
+                    gender_value = person_record.Sex
+
+                # Update existing record with new gender value if needed
+                if person_record.Sex != gender_value:
+                    person_record.Sex = gender_value
+                    person_record.UTCModDate = func.julianday('now') - 2415018.5
+
+            else:
+                gender_value = get_gender_input(name_given, name_surname, guid_value)
+                person_record = PersonTable(
+                    UniqueID=guid_value,
+                    Color=1,
+                    UTCModDate=func.julianday('now') - 2415018.5,
+                    Sex=gender_value
+                )
+                rm_session.add(person_record)
+
+            rm_session.commit()
+
+            # Retrieve PersonID and process NameTable records
+            person_id = person_record.PersonID
+            existing_name = rm_session.query(NameTable).filter_by(OwnerID=person_id, NameType=6).first()
+
+            if existing_name:
+                # Update existing name record
+                existing_name.Given = name_given
+                existing_name.Surname = name_surname
+                existing_name.IsPrimary = 1
+            else:
+                # Create a new name record in NameTable
+                profile_name_table = NameTable(
+                    OwnerID=person_id,
+                    Given=name_given,
+                    Surname=name_surname,
+                    IsPrimary=1,
+                    NameType=6,
+                )
+                rm_session.add(profile_name_table)
+
+        except MultipleResultsFound:
+            logging.error(f"Multiple records found for UniqueID: {guid_value}. "
+                          f"Please check the database for duplicates.")
+            rm_session.rollback()
+        except Exception as e:
+            logging.error(f"Error processing kit: {id_value}, GUID: {guid_value}, Name: {name_given} {name_surname}")
+            logging.exception(e)
+            rm_session.rollback()
+
+    rm_session.commit()
+    logging.info("Inserted or updated selected Profiles.")
+
+
+# Process Ancestry data
 def process_ancestry(session: Session, filtered_ids):
     global limit
     logging.getLogger('process_ancestry')
@@ -309,12 +359,13 @@ def process_ancestry(session: Session, filtered_ids):
 
     try:
         id_mapping = {}
+        # Process Ancestry_MatchGroups data
         if ancestry_matchgroups and filtered_ids.get('Ancestry_matchGroups'):
             def process_matchgroup(mg_session, group):
-                # Step 1: Query Ancestry_matchTrees using matchGuid
+                # Query Ancestry_matchTrees using matchGuid
                 match_tree = mg_session.query(Ancestry_matchTrees).filter_by(matchid=group.matchGuid).first()
 
-                # Step 2: Initialize variables
+                # create hashed ids for PersonID, FatherID, and MotherID
                 if match_tree and match_tree.personId is not None:
                     person_id = hash_id(match_tree.personId, id_mapping)
                     father_id = hash_id(match_tree.fatherId, id_mapping) if match_tree.fatherId is not None else None
@@ -334,7 +385,6 @@ def process_ancestry(session: Session, filtered_ids):
                 subject_gender = group.subjectGender
                 sex = 1 if subject_gender == 'F' else 0 if subject_gender == 'M' else 2  # Default or unknown value
 
-                # Return the processed record
                 return {
                     'PersonID': person_id,
                     'FatherID': father_id,
@@ -372,10 +422,10 @@ def process_ancestry(session: Session, filtered_ids):
             id_mapping = {group['unique_id']: group for group in match_groups}
             processed_ancestry_data.extend(match_groups or [])
 
+        # Process Ancestry_MatchTrees data
         if ancestry_matchtrees and filtered_ids.get('Ancestry_matchTrees'):
             def process_matchtree(tree, person_data=None):
                 try:
-                    # Choose data source
                     data_source = person_data if person_data else tree
 
                     # Get IDs
@@ -383,7 +433,7 @@ def process_ancestry(session: Session, filtered_ids):
                     father_id = hash_id(data_source.fatherId, id_mapping) if data_source.fatherId is not None else None
                     mother_id = hash_id(data_source.motherId, id_mapping) if data_source.motherId is not None else None
 
-                    # Determine sex value
+                    # Determine gender
                     sex_value = 2
                     if data_source.personId is not None:
                         father_match = session.query(Ancestry_matchTrees).filter(
@@ -401,7 +451,7 @@ def process_ancestry(session: Session, filtered_ids):
                     unique_id = tree.matchid
                     match_group_data = id_mapping.get(unique_id, {})
 
-                    # Update name and sex_value based on match_group_data
+                    # Update name and gender based on match_group_data
                     if tree.relid == '1':
                         surname = match_group_data.get('Surname', tree.surname)
                         given = match_group_data.get('Given', tree.given)
@@ -417,7 +467,6 @@ def process_ancestry(session: Session, filtered_ids):
                         given = tree.given
                         name_type = 2
 
-                    # Return the processed record
                     return {
                         'unique_id': unique_id,
                         'sex': sex_value,
@@ -456,20 +505,7 @@ def process_ancestry(session: Session, filtered_ids):
                 logging.error(f"An error occurred while processing Ancestry match trees: {str(e)}")
                 logging.exception("Exception details:")
 
-            try:
-                # Process match trees with limit and process_matchtree function
-                match_trees = batch_limit(
-                    session, Ancestry_matchTrees, filtered_ids.get('Ancestry_matchTrees', []),
-                    process_matchtree, limit
-                )
-
-                # Extend processed ancestry data
-                processed_ancestry_data.extend(match_trees or [])
-            except Exception as e:
-                logging.error(f"An error occurred while processing Ancestry match trees: {str(e)}")
-                logging.exception("Exception details:")
-
-        # Check if Ancestry_TreeData should be processed
+        # Process Ancestry_TreeData data
         if ancestry_treedata and filtered_ids.get('Ancestry_TreeData'):
             def process_treedata(treedata):
                 try:
@@ -499,7 +535,7 @@ def process_ancestry(session: Session, filtered_ids):
                 logging.error(f"An error occurred while processing Ancestry tree data: {str(e)}")
                 logging.exception("Exception details:")
 
-        # Check if Ancestry_ICW should be processed
+        # Process Ancestry_ICW data
         if ancestry_icw and filtered_ids.get('Ancestry_ICW'):
             def process_icw(icw):
                 match_tree = session.query(Ancestry_matchTrees).filter_by(matchid=icw.matchid).first()
@@ -517,15 +553,19 @@ def process_ancestry(session: Session, filtered_ids):
                     'numSharedSegments': icw.numSharedSegments,
                 }
 
-            # Process Ancestry ICW data
-            icw_data = batch_limit(
-                session, Ancestry_ICW, filtered_ids.get('Ancestry_ICW', []),
-                process_icw, limit
-            )
+            try:
+                # Process Ancestry ICW data
+                icw_data = batch_limit(
+                    session, Ancestry_ICW, filtered_ids.get('Ancestry_ICW', []),
+                    process_icw, limit
+                )
 
-            processed_ancestry_data.extend(icw_data or [])
+                processed_ancestry_data.extend(icw_data or [])
+            except Exception as e:
+                logging.error(f"An error occurred while processing Ancestry ICW data: {str(e)}")
+                logging.exception("Exception details:")
 
-        # Check if Ancestry_matchethnicity should be processed
+        # Process Ancestry_matchEthnicity
         if ancestry_matchethnicity and filtered_ids.get('Ancestry_matchEthnicity'):
             def process_matchethnicity(ethnicity):
                 try:
@@ -554,7 +594,7 @@ def process_ancestry(session: Session, filtered_ids):
                 logging.error(f"An error occurred while processing Ancestry match ethnicity data: {str(e)}")
                 logging.exception("Exception details:")
 
-        # Check if Ancestry_ancestorcouple should be processed
+        # Process AncestryAncestorCouple
         if ancestry_ancestorcouple and filtered_ids.get('AncestryAncestorCouple'):
             def process_ancestorcouple(couple):
                 try:
@@ -616,6 +656,7 @@ def process_ancestry(session: Session, filtered_ids):
     return processed_ancestry_data
 
 
+# Process FTDNA data
 def process_ftdna(session: Session, filtered_ids):
     global limit
     logging.getLogger('process_ftdna')
@@ -726,6 +767,7 @@ def process_ftdna(session: Session, filtered_ids):
     return processed_ftdna_data
 
 
+# Process MyHeritage data
 def process_mh(session: Session, filtered_ids):
     global limit
     logging.getLogger('process_mh')
@@ -842,52 +884,8 @@ def process_mh(session: Session, filtered_ids):
     return processed_mh_data
 
 
-def insert_fact_type(fact_rm_session: Session):
-    logging.getLogger('insert_fact_type')
-
-    try:
-        # Check if Fact Type 'DNA Kit' already exists
-        fact_type = fact_rm_session.query(FactTypeTable).filter_by(Name='DNA Kit').first()
-
-        if not fact_type:
-            # Create a new Fact Type 'DNA Kit' if it doesn't exist
-            new_fact_type = FactTypeTable(
-                OwnerType=0,
-                Name='DNA Kit',
-                Abbrev='DNA Kit',
-                GedcomTag='EVEN',
-                UseValue=1,
-                UseDate=0,
-                UsePlace=0,
-                Sentence='[person] had a DNA test performed. View DNA Tab in profile to view matches.',
-                Flags=2147483647,
-                UTCModDate=func.julianday('now') - 2415018.5,
-            )
-            fact_rm_session.add(new_fact_type)
-            fact_rm_session.commit()  # Commit the new record
-            logging.info("Fact Type 'DNA Kit' inserted into FactTypeTable.")
-        else:
-            # Update existing Fact Type 'DNA Kit'
-            fact_type.OwnerType = 0
-            fact_type.Abbrev = 'DNA Kit'
-            fact_type.GedcomTag = 'EVEN'
-            fact_type.UseValue = 1
-            fact_type.UseDate = 0
-            fact_type.UsePlace = 0
-            fact_type.Sentence = '[person] had a DNA test performed. View DNA Tab in profile to view matches.'
-            fact_type.Flags = 2147483647
-            fact_type.UTCModDate = func.julianday('now') - 2415018.5
-            fact_rm_session.commit()  # Commit the updates
-            logging.info("Fact Type 'DNA Kit' updated in FactTypeTable.")
-    except Exception as e:
-        logging.error(f"Error inserting or updating Fact Type 'DNA Kit' in FactTypeTable: {e}")
-        fact_rm_session.rollback()
-        raise
-    finally:
-        fact_rm_session.close()
-
-
-def insert_person(person_rm_session: Session, processed_data, batch_size=100):
+# Import data into RootsMagic PersonTable.
+def insert_person(person_rm_session: Session, processed_data, batch_size=limit):
     logging.getLogger('insert_person')
     logging.info("Inserting or updating individuals in PersonTable...")
 
@@ -923,7 +921,6 @@ def insert_person(person_rm_session: Session, processed_data, batch_size=100):
             if person_id is not None:
                 person_data['PersonID'] = person_id
 
-            # Try to find an existing person record
             existing_person = None
             if person_id is not None:
                 existing_person = person_rm_session.query(PersonTable).filter_by(PersonID=person_id).first()
@@ -960,6 +957,7 @@ def insert_person(person_rm_session: Session, processed_data, batch_size=100):
         person_rm_session.close()
 
 
+# Import data into RootsMagic NameTable.
 def insert_name(name_rm_session: Session, processed_data, batch_size=limit):
     logging.getLogger('insert_name')
     logging.info("Inserting or updating names in NameTable...")
@@ -1030,6 +1028,132 @@ def insert_name(name_rm_session: Session, processed_data, batch_size=limit):
         name_rm_session.close()
 
 
+# Import data into RootsMagic FamilyTable
+def insert_family(family_rm_session: Session, processed_data, batch_size=limit):
+    logging.getLogger('insert_family')
+    logging.info("Inserting or updating family data in FamilyTable...")
+
+    try:
+        processed_count = 0
+
+        for data in processed_data:
+            family_id = data.get('FamilyID')
+            father_id = data.get('FatherID')
+            mother_id = data.get('MotherID')
+            child_id = data.get('PersonID')
+
+            # logging.debug(f"Processing family record: FamilyID: {family_id}, "
+            #               f"FatherID: {father_id}, MotherID: {mother_id}, ChildID: {child_id}")
+
+            # If FamilyID is provided, look for an existing record with that FamilyID
+            if family_id:
+                existing_family = family_rm_session.query(FamilyTable).filter_by(FamilyID=family_id).first()
+            else:
+                # If no FamilyID, look for an existing record with matching FatherID, MotherID, and ChildID
+                existing_family = family_rm_session.query(FamilyTable).filter(
+                    FamilyTable.FatherID == father_id,
+                    FamilyTable.MotherID == mother_id,
+                    FamilyTable.ChildID == child_id
+                ).first()
+
+            if existing_family:
+                # Merge new data into the existing record
+                for key, value in data.items():
+                    if key in FamilyTable.__table__.columns and value is not None:
+                        setattr(existing_family, key, value)
+                existing_family.UTCModDate = func.julianday('now') - 2415018.5
+                data['FamilyID'] = existing_family.FamilyID  # Update FamilyID in data
+                # logging.debug(f"Updated existing family record: FamilyID: "
+                #               f"{existing_family.FamilyID}, ChildID: {child_id}")
+            else:
+                # Create new record in FamilyTable
+                family_data = {
+                    'FatherID': father_id,
+                    'MotherID': mother_id,
+                    'ChildID': child_id,
+                    'UTCModDate': func.julianday('now') - 2415018.5,
+                }
+                new_family = FamilyTable(**family_data)
+                family_rm_session.add(new_family)
+                family_rm_session.flush()  # Ensure the new record is written to the database
+
+                # Retrieve the FamilyID of the new record
+                data['FamilyID'] = new_family.FamilyID
+                # logging.debug(f"Inserted new family record: FamilyID: {data['FamilyID']}, ChildID: {child_id}")
+
+            processed_count += 1
+            if batch_size > 0 and processed_count % batch_size == 0:
+                family_rm_session.flush()
+
+        family_rm_session.commit()
+        logging.info(f"Processed {processed_count} family records.")
+        return processed_data
+
+    except Exception as e:
+        logging.error(f"Error inserting or updating FamilyTable: {e}")
+        family_rm_session.rollback()
+        raise
+    finally:
+        family_rm_session.close()
+
+
+# Import data into RootsMagic ChildTable
+def insert_child(child_rm_session: Session, processed_data, batch_size=limit):
+    logging.getLogger('insert_child')
+    logging.info("Inserting or updating children in ChildTable...")
+
+    try:
+        processed_count = 0
+
+        for data in processed_data:
+            child_id = data.get('PersonID')
+            family_id = data.get('FamilyID')
+
+            # Check if both ChildID and FamilyID are present
+            if not child_id or not family_id:
+                logging.warning(f"Skipped processing record due to missing ChildID or FamilyID: "
+                                f"ChildID={child_id}, FamilyID={family_id}")
+                continue
+
+            # Check if a child record already exists for the given ChildID and FamilyID
+            existing_child = child_rm_session.query(ChildTable).filter_by(
+                ChildID=child_id, FamilyID=family_id).first()
+
+            if existing_child:
+                # Merge new data into the existing record
+                for key, value in data.items():
+                    if key in ChildTable.__table__.columns and value is not None:
+                        setattr(existing_child, key, value)
+                existing_child.UTCModDate = func.julianday('now') - 2415018.5
+                # logging.debug(
+                #     f"Updated existing child record for ChildID: {child_id} and FamilyID: {family_id}")
+            else:
+                # Create new record in ChildTable
+                child_data = {
+                    'ChildID': child_id,
+                    'FamilyID': family_id,
+                    'UTCModDate': func.julianday('now') - 2415018.5,
+                }
+                new_child = ChildTable(**child_data)
+                child_rm_session.add(new_child)
+                # logging.debug(f"Inserted new child record for ChildID: {child_id} and FamilyID: {family_id}")
+
+            processed_count += 1
+            if batch_size > 0 and processed_count % batch_size == 0:
+                child_rm_session.flush()
+
+        child_rm_session.commit()
+        logging.info(f"Processed {processed_count} child records.")
+
+    except Exception as e:
+        logging.error(f"Error inserting or updating ChildTable: {e}")
+        child_rm_session.rollback()
+        raise
+    finally:
+        child_rm_session.close()
+
+
+# Import data into RootsMagic DNATable
 def insert_dna(dna_rm_session: Session, processed_data, batch_size=limit):
     logging.getLogger('insert_dna')
     logging.info("Inserting or updating DNA data in DNATable...")
@@ -1122,6 +1246,7 @@ def insert_dna(dna_rm_session: Session, processed_data, batch_size=limit):
         dna_rm_session.close()
 
 
+# Import data into RootsMagic EventTable
 def insert_event(event_rm_session: Session, processed_data, batch_size=limit):
     logging.getLogger('insert_event')
     logging.info("Inserting or updating events in EventTable...")
@@ -1191,6 +1316,7 @@ def insert_event(event_rm_session: Session, processed_data, batch_size=limit):
         event_rm_session.close()
 
 
+# Import data into RootsMagic PlaceTable
 def insert_place(place_rm_session: Session, processed_data, batch_size=limit):
     logging.getLogger('insert_place')
     logging.info("Inserting or updating places in PlaceTable...")
@@ -1244,129 +1370,7 @@ def insert_place(place_rm_session: Session, processed_data, batch_size=limit):
         place_rm_session.close()
 
 
-def insert_family(family_rm_session: Session, processed_data, batch_size=limit):
-    logging.getLogger('insert_family')
-    logging.info("Inserting or updating family data in FamilyTable...")
-
-    try:
-        processed_count = 0
-
-        for data in processed_data:
-            family_id = data.get('FamilyID')
-            father_id = data.get('FatherID')
-            mother_id = data.get('MotherID')
-            child_id = data.get('PersonID')  # Ensure we're getting the PersonID as ChildID
-
-            # logging.debug(f"Processing family record: FamilyID: {family_id}, "
-            #               f"FatherID: {father_id}, MotherID: {mother_id}, ChildID: {child_id}")
-
-            # If FamilyID is provided, look for an existing record with that FamilyID
-            if family_id:
-                existing_family = family_rm_session.query(FamilyTable).filter_by(FamilyID=family_id).first()
-            else:
-                # If no FamilyID, look for an existing record with matching FatherID, MotherID, and ChildID
-                existing_family = family_rm_session.query(FamilyTable).filter(
-                    FamilyTable.FatherID == father_id,
-                    FamilyTable.MotherID == mother_id,
-                    FamilyTable.ChildID == child_id
-                ).first()
-
-            if existing_family:
-                # Merge new data into the existing record
-                for key, value in data.items():
-                    if key in FamilyTable.__table__.columns and value is not None:
-                        setattr(existing_family, key, value)
-                existing_family.UTCModDate = func.julianday('now') - 2415018.5
-                data['FamilyID'] = existing_family.FamilyID  # Update FamilyID in data
-                # logging.debug(f"Updated existing family record: FamilyID: "
-                #               f"{existing_family.FamilyID}, ChildID: {child_id}")
-            else:
-                # Create new record in FamilyTable
-                family_data = {
-                    'FatherID': father_id,
-                    'MotherID': mother_id,
-                    'ChildID': child_id,
-                    'UTCModDate': func.julianday('now') - 2415018.5,
-                }
-                new_family = FamilyTable(**family_data)
-                family_rm_session.add(new_family)
-                family_rm_session.flush()  # Ensure the new record is written to the database
-
-                # Retrieve the FamilyID of the new record
-                data['FamilyID'] = new_family.FamilyID
-                # logging.debug(f"Inserted new family record: FamilyID: {data['FamilyID']}, ChildID: {child_id}")
-
-            processed_count += 1
-            if batch_size > 0 and processed_count % batch_size == 0:
-                family_rm_session.flush()
-
-        family_rm_session.commit()
-        logging.info(f"Processed {processed_count} family records.")
-        return processed_data  # Return the updated processed_data with FamilyID
-
-    except Exception as e:
-        logging.error(f"Error inserting or updating FamilyTable: {e}")
-        family_rm_session.rollback()
-        raise
-    finally:
-        family_rm_session.close()
-
-
-def insert_child(child_rm_session: Session, processed_data, batch_size=limit):
-    logging.getLogger('insert_child')
-    logging.info("Inserting or updating children in ChildTable...")
-
-    try:
-        processed_count = 0
-
-        for data in processed_data:
-            child_id = data.get('PersonID')
-            family_id = data.get('FamilyID')
-
-            # Check if both ChildID and FamilyID are present
-            if not child_id or not family_id:
-                logging.warning(f"Skipped processing record due to missing ChildID or FamilyID: "
-                                f"ChildID={child_id}, FamilyID={family_id}")
-                continue
-
-            # Check if a child record already exists for the given ChildID and FamilyID
-            existing_child = child_rm_session.query(ChildTable).filter_by(
-                ChildID=child_id, FamilyID=family_id).first()
-
-            if existing_child:
-                # Merge new data into the existing record
-                for key, value in data.items():
-                    if key in ChildTable.__table__.columns and value is not None:
-                        setattr(existing_child, key, value)
-                existing_child.UTCModDate = func.julianday('now') - 2415018.5
-                # logging.debug(
-                #     f"Updated existing child record for ChildID: {child_id} and FamilyID: {family_id}")
-            else:
-                # Create new record in ChildTable
-                child_data = {
-                    'ChildID': child_id,
-                    'FamilyID': family_id,
-                    'UTCModDate': func.julianday('now') - 2415018.5,
-                }
-                new_child = ChildTable(**child_data)
-                child_rm_session.add(new_child)
-                # logging.debug(f"Inserted new child record for ChildID: {child_id} and FamilyID: {family_id}")
-
-            processed_count += 1
-            if batch_size > 0 and processed_count % batch_size == 0:
-                child_rm_session.flush()
-
-        child_rm_session.commit()
-        logging.info(f"Processed {processed_count} child records.")
-
-    except Exception as e:
-        logging.error(f"Error inserting or updating ChildTable: {e}")
-        child_rm_session.rollback()
-        raise
-    finally:
-        child_rm_session.close()
-
-
+# Import data into RootsMagic GroupTable
 def insert_group(group_rm_session: Session, processed_data, batch_size=limit):
     logging.getLogger('insert_group')
     logging.info("Inserting or updating group data in GroupTable...")
@@ -1412,6 +1416,7 @@ def insert_group(group_rm_session: Session, processed_data, batch_size=limit):
         group_rm_session.close()
 
 
+# Import data into RootsMagic URLTable
 def insert_url(url_rm_session: Session, processed_data, batch_size=limit):
     logging.getLogger('insert_url')
     logging.info("Inserting or updating URL data in URLTable...")
@@ -1500,7 +1505,7 @@ def main():
             insert_name(rm_session, processed_data)
             insert_family(rm_session, processed_data)
             insert_child(rm_session, processed_data)
-            # insert_dna(rm_session, processed_data)
+            insert_dna(rm_session, processed_data)
             # insert_place(rm_session, processed_data)
             # insert_event(rm_session, processed_data)
             # insert_url(rm_session, processed_data)
