@@ -16,9 +16,9 @@ Base = declarative_base()
 def init_db(database_url):
     engine = create_engine(database_url)
     Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-    dg_session = Session()
-    rm_session = Session()
+    session = sessionmaker(bind=engine)
+    dg_session = session()
+    rm_session = session()
     return dg_session, rm_session
 
 
@@ -74,15 +74,15 @@ def connect_to_db_sqlalchemy(dg_db_path, rm_db_path):
     try:
         # Connect to DNAGedcom database
         dg_engine = create_engine(f"sqlite:///{dg_db_path}")
-        DGSession = sessionmaker(bind=dg_engine)
-        dg_session = DGSession()
+        dg_bind = sessionmaker(bind=dg_engine)
+        dg_session = dg_bind()
         logging.info(f"Connected to DNAGedcom database at: {dg_db_path} using SQLAlchemy")
 
         # Connect to RootsMagic database
         rm_engine = create_engine(f"sqlite:///{rm_db_path}")
         listen(rm_engine, 'connect', add_collation)
-        RMSession = sessionmaker(bind=rm_engine)
-        rm_session = RMSession()
+        rm_bind = sessionmaker(bind=rm_engine)
+        rm_session = rm_bind()
         logging.info(f"Connected to RootsMagic database at: {rm_db_path} using SQLAlchemy")
 
         return dg_session, dg_engine, rm_session, rm_engine
@@ -103,15 +103,15 @@ def main():
     rootsmagic_engine = None
 
     try:
-        DNAGEDCOM_DB_PATH, ROOTSMAGIC_DB_PATH = find_database_paths()
+        dnagedcom_db_path, rootsmagic_db_path = find_database_paths()
 
         # Connect using sqlite3
-        dnagedcom_conn = connect_to_db(DNAGEDCOM_DB_PATH, db_name="DNAGedcom")
-        rootsmagic_conn = connect_to_db(ROOTSMAGIC_DB_PATH, db_name="RootsMagic")
+        dnagedcom_conn = connect_to_db(dnagedcom_db_path, db_name="DNAGedcom")
+        rootsmagic_conn = connect_to_db(rootsmagic_db_path, db_name="RootsMagic")
 
         # Connect using SQLAlchemy
         dnagedcom_session, dnagedcom_engine, rootsmagic_session, rootsmagic_engine = connect_to_db_sqlalchemy(
-            DNAGEDCOM_DB_PATH, ROOTSMAGIC_DB_PATH)
+            dnagedcom_db_path, rootsmagic_db_path)
 
     except Exception as e:
         logging.critical(f"Critical error in database connections: {e}")

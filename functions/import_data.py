@@ -1,7 +1,5 @@
 # import_data.py
 # Local Imports
-from sqlalchemy import func
-
 from a_classes import *
 from database import connect_to_db_sqlalchemy, find_database_paths
 from ftdna_classes import *
@@ -11,6 +9,7 @@ from select_kits import user_kit_data, prompt_user_for_kits
 from setup_logging import setup_logging
 # Remote Imports
 import logging
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError, MultipleResultsFound
 import uuid
@@ -1461,10 +1460,10 @@ def insert_url(url_rm_session: Session, processed_data, batch_size=limit):
 def main():
     setup_logging()
     logging.info("Connecting to databases...")
-    DNAGEDCOM_DB_PATH, ROOTSMAGIC_DB_PATH = find_database_paths()
+    dnagedcom_db_path, rootsmagic_db_path = find_database_paths()
 
     # Connect to DNAGedcom and RootsMagic databases using SQLAlchemy
-    dg_session, dg_engine, rm_session, rm_engine = connect_to_db_sqlalchemy(DNAGEDCOM_DB_PATH, ROOTSMAGIC_DB_PATH)
+    dg_session, dg_engine, rm_session, rm_engine = connect_to_db_sqlalchemy(dnagedcom_db_path, rootsmagic_db_path)
 
     if not all([dg_session, dg_engine, rm_session, rm_engine]):
         logging.critical("Failed to connect to one or both databases using SQLAlchemy.")

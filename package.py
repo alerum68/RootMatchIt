@@ -12,9 +12,7 @@ files = [
     "classes/mh_classes.py",
     "functions/select_kits.py",
     "functions/import_data.py",
-    "functions/process_data.py",
     "functions/create_indices.py",
-    "functions/main.py"
 ]
 
 import_lines = set()

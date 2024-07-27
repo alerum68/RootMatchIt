@@ -85,11 +85,11 @@ def prompt_user_for_kits(dna_kits):
 def main():
     setup_logging()
     logging.info("Connecting to database...")
-    DNAGEDCOM_DB_PATH, ROOTSMAGIC_DB_PATH = find_database_paths()
+    dnagedcom_db_path, rootsmagic_db_path = find_database_paths()
 
-    engine = create_engine(f'sqlite:///{DNAGEDCOM_DB_PATH}', echo=False)
-    Session = sessionmaker(bind=engine)
-    session = Session()
+    engine = create_engine(f'sqlite:///{dnagedcom_db_path}', echo=False)
+    session_bind = sessionmaker(bind=engine)
+    session = session_bind()
 
     logging.info("Fetching user kit data...")
     dna_kits = user_kit_data(session)
