@@ -386,12 +386,15 @@ def process_ancestry(session: Session, filtered_ids):
                 sex = 1 if subject_gender == 'F' else 0 if subject_gender == 'M' else 2  # Default or unknown value
 
                 return {
+                    'source': 'process_matchgroup',
+                    'DNAProvider': 2,
                     'PersonID': person_id,
                     'FatherID': father_id,
                     'MotherID': mother_id,
                     'unique_id': group.matchGuid,
                     'sex': sex,
                     'color': color,
+                    'matchTestDisplayName': group.matchTestDisplayName,
                     'Given': given,
                     'Surname': surname,
                     'groupName': group.groupName,
@@ -468,6 +471,7 @@ def process_ancestry(session: Session, filtered_ids):
                         name_type = 2
 
                     return {
+                        'source': 'process_matchtree',
                         'unique_id': unique_id,
                         'sex': sex_value,
                         'color': 24,
@@ -510,6 +514,7 @@ def process_ancestry(session: Session, filtered_ids):
             def process_treedata(treedata):
                 try:
                     return {
+                        'source': 'process_treedata',
                         'TestGuid': treedata.TestGuid,
                         'TreeSize': treedata.TreeSize,
                         'PublicTree': treedata.PublicTree,
@@ -543,6 +548,7 @@ def process_ancestry(session: Session, filtered_ids):
                                     id_mapping) if match_tree and match_tree.personId is not None else None
 
                 return {
+                    'source': 'process_icw',
                     'PersonID': person_id,
                     'testGuid': icw.matchid,
                     'matchGuid': icw.icwid,
@@ -570,6 +576,7 @@ def process_ancestry(session: Session, filtered_ids):
             def process_matchethnicity(ethnicity):
                 try:
                     return {
+                        'source': 'process_matchethnicity',
                         'unique_id': generate_unique_id(ethnicity.matchGuid),
                         'matchGuid': ethnicity.matchGuid,
                         'ethnicregions': ethnicity.ethnicregions,
@@ -599,6 +606,7 @@ def process_ancestry(session: Session, filtered_ids):
             def process_ancestorcouple(couple):
                 try:
                     return {
+                        'source': 'process_ancestorcouple',
                         'Id': couple.Id,
                         'TestGuid': couple.TestGuid,
                         'MatchGuid': couple.MatchGuid,
@@ -1154,86 +1162,70 @@ def insert_child(child_rm_session: Session, processed_data, batch_size=limit):
 
 
 # Import data into RootsMagic DNATable
-def insert_dna(dna_rm_session: Session, processed_data, batch_size=limit):
+def insert_dna(dna_rm_session: Session, processed_data, selected_kits, batch_size=limit):
     logging.getLogger('insert_dna')
     logging.info("Inserting or updating DNA data in DNATable...")
 
     try:
         processed_count = 0
 
-        for data in processed_data:
-            if 'matchGuid' in data:
-                # Data is from match_groups
-                match_tree_1 = dna_rm_session.query(Ancestry_matchTrees).filter_by(matchid=data['testGuid']).first()
-                person_id_1 = match_tree_1.personId if match_tree_1 else None
+        for kit in selected_kits:
+            selected_kit_guid = kit[1]
+            logging.info(f"Processing data for kit GUID: {selected_kit_guid}")
 
-                match_tree_2 = dna_rm_session.query(Ancestry_matchTrees).filter_by(matchid=data['matchGuid']).first()
-                person_id_2 = match_tree_2.personId if match_tree_2 else None
+            for data in processed_data:
 
-                label1 = data['matchTestDisplayName']
-                label2 = data['matchGuid']
-                note = f"{data['matchTestDisplayName']} is a match with {data['matchGuid']}"
-                shared_cm = data.get('sharedCM')
-                shared_segs = data.get('SharedSegs')
-            elif 'icwid' in data:
-                # Data is from icw
-                match_tree_1 = dna_rm_session.query(Ancestry_matchTrees).filter_by(matchid=data['matchid']).first()
-                person_id_1 = match_tree_1.personId if match_tree_1 else None
+                # Check for the specific marker that identifies data from process_matchgroup
+                if 'source' in data and data['source'] == 'process_matchgroup':
+                    # logging.debug("Data is identified as from process_matchgroup")
 
-                match_tree_2 = dna_rm_session.query(Ancestry_matchTrees).filter_by(matchid=data['icwid']).first()
-                person_id_2 = match_tree_2.personId if match_tree_2 else None
+                    person_1 = dna_rm_session.query(PersonTable).filter_by(UniqueID=selected_kit_guid).first()
+                    person_id_1 = person_1.PersonID if person_1 else None
 
-                label1 = data['matchid']
-                label2 = data['icwid']
-                note = f"{data['matchid']} is a match with {data['icwid']}"
-                shared_cm = data.get('SharedCM')
-                shared_segs = data.get('SharedSegs')
-            elif 'PersonID' in data:
-                # Data is from match_trees
-                person_id_1 = data.get('PersonID')
-                person_id_2 = None  # match_trees don't have a second person
-                label1 = f"{data.get('Given', '')} {data.get('Surname', '')}".strip()
-                label2 = data.get('unique_id')
-                note = f"Match tree data for {label1}"
-                shared_cm = data.get('sharedCM')
-                shared_segs = data.get('SharedSegs')
-            else:
-                logging.warning(f"Unrecognized data format: {data}")
-                continue
+                    person_id_2 = data.get('PersonID')
 
-            # Construct dna_data for insertion
-            dna_data = {
-                'ID1': person_id_1,
-                'ID2': person_id_2,
-                'Label1': label1,
-                'Label2': label2,
-                'DNAProvider': data.get('DNAProvider'),
-                'SharedCM': shared_cm,
-                'SharedPercent': round(shared_cm / 69, 2) if shared_cm else None,
-                'SharedSegs': shared_segs,
-                'Date': data.get('Date') or data.get('matchRunDate'),
-                'Note': note,
-                'UTCModDate': func.julianday('now') - 2415018.5,
-            }
+                    label1 = f"{data['Given']} {data['Surname']}"
+                    label2 = data['unique_id']
+                    note = (f"https://www.ancestry.com/discoveryui-matches/compare/"
+                            f"{selected_kit_guid}/with/{data['unique_id']}")
+                    shared_cm = data.get('sharedCM')
+                    date = data.get('Date') or data.get('matchRunDate')
 
-            # Check if a DNA record already exists for the given ID1 and ID2
-            existing_dna = dna_rm_session.query(DNATable).filter_by(ID1=person_id_1, ID2=person_id_2).first()
+                    # Construct dna_data for insertion
+                    dna_data = {
+                        'ID1': person_id_1,
+                        'ID2': person_id_2,
+                        'Label1': label1,
+                        'Label2': label2,
+                        'DNAProvider': data.get('DNAProvider'),
+                        'SharedCM': shared_cm,
+                        'SharedPercent': round(shared_cm / 69, 2) if shared_cm else None,
+                        'SharedSegs': data.get('SharedSegs'),
+                        'Date': date,
+                        'Note': note,
+                        'UTCModDate': func.julianday('now') - 2415018.5,
+                    }
 
-            if existing_dna:
-                # Update existing record
-                for key, value in dna_data.items():
-                    setattr(existing_dna, key, value)
-                existing_dna.UTCModDate = func.julianday('now') - 2415018.5
-                logging.info(f"Updated existing DNA record for ID1: {person_id_1} and ID2: {person_id_2}")
-            else:
-                # Create new record in DNATable
-                new_dna = DNATable(**dna_data)
-                dna_rm_session.add(new_dna)
-                logging.info(f"Inserted new DNA record for ID1: {person_id_1} and ID2: {person_id_2}")
+                    # logging.debug(f"DNA data constructed for insertion: {dna_data}")
 
-            processed_count += 1
-            if batch_size > 0 and processed_count % batch_size == 0:
-                dna_rm_session.flush()
+                    # Check if a DNA record already exists for the given ID1 and ID2
+                    existing_dna = dna_rm_session.query(DNATable).filter_by(ID1=person_id_1, ID2=person_id_2).first()
+
+                    if existing_dna:
+                        # Update existing record
+                        for key, value in dna_data.items():
+                            setattr(existing_dna, key, value)
+                        existing_dna.UTCModDate = func.julianday('now') - 2415018.5
+                        # logging.debug(f"Updated existing DNA record for ID1: {person_id_1} and ID2: {person_id_2}")
+                    else:
+                        # Create new record in DNATable
+                        new_dna = DNATable(**dna_data)
+                        dna_rm_session.add(new_dna)
+                        # logging.debug(f"Inserted new DNA record for ID1: {person_id_1} and ID2: {person_id_2}")
+
+                    processed_count += 1
+                    if batch_size > 0 and processed_count % batch_size == 0:
+                        dna_rm_session.flush()
 
         dna_rm_session.commit()
         logging.info(f"Processed {processed_count} DNA records.")
@@ -1491,13 +1483,12 @@ def main():
 
         filtered_ids = filter_selected_kits(dg_session, selected_kits)
         import_profiles(rm_session, selected_kits)
+
         # Process different providers and combine into processed_data.
         processed_ancestry_data = process_ancestry(dg_session, filtered_ids)
         processed_ftdna_data = process_ftdna(dg_session, filtered_ids)
         processed_mh_data = process_mh(dg_session, filtered_ids)
         processed_data = processed_ancestry_data + processed_ftdna_data + processed_mh_data
-
-        # logging.info(processed_ancestry_data)
 
         try:
             insert_fact_type(rm_session)
@@ -1505,7 +1496,7 @@ def main():
             insert_name(rm_session, processed_data)
             insert_family(rm_session, processed_data)
             insert_child(rm_session, processed_data)
-            insert_dna(rm_session, processed_data)
+            insert_dna(rm_session, processed_data, selected_kits)
             # insert_place(rm_session, processed_data)
             # insert_event(rm_session, processed_data)
             # insert_url(rm_session, processed_data)
