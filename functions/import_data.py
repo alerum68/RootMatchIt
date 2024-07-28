@@ -246,7 +246,7 @@ def insert_fact_type(fact_rm_session: Session):
                 UsePlace=0,
                 Sentence='[person] had a DNA test performed. View DNA Tab in profile to view matches.',
                 Flags=2147483647,
-                UTCModDate=func.julianday('now') - 2415018.5,
+                UTCModDate=func.julianday(func.current_timestamp()) - 2415018.5,
             )
             fact_rm_session.add(new_fact_type)
             fact_rm_session.commit()
@@ -261,7 +261,7 @@ def insert_fact_type(fact_rm_session: Session):
             fact_type.UsePlace = 0
             fact_type.Sentence = '[person] had a DNA test performed. View DNA Tab in profile to view matches.'
             fact_type.Flags = 2147483647
-            fact_type.UTCModDate = func.julianday('now') - 2415018.5
+            fact_type.UTCModDate = func.julianday(func.current_timestamp()) - 2415018.5
             fact_rm_session.commit()
             logging.info("Fact Type 'DNA Kit' updated in FactTypeTable.")
     except Exception as e:
@@ -306,14 +306,14 @@ def import_profiles(rm_session: Session, selected_kits):
                 # Update existing record with new gender value if needed
                 if person_record.Sex != gender_value:
                     person_record.Sex = gender_value
-                    person_record.UTCModDate = func.julianday('now') - 2415018.5
+                    person_record.UTCModDate = func.julianday(func.current_timestamp()) - 2415018.5
 
             else:
                 gender_value = get_gender_input(name_given, name_surname, guid_value)
                 person_record = PersonTable(
                     UniqueID=guid_value,
                     Color=1,
-                    UTCModDate=func.julianday('now') - 2415018.5,
+                    UTCModDate=func.julianday(func.current_timestamp()) - 2415018.5,
                     Sex=gender_value
                 )
                 rm_session.add(person_record)
@@ -336,7 +336,13 @@ def import_profiles(rm_session: Session, selected_kits):
                     Given=name_given,
                     Surname=name_surname,
                     IsPrimary=1,
-                    NameType=6,
+                    IsPrivate=0,
+                    Proof=0,
+                    UTCModDate=func.julianday(func.current_timestamp()) - 2415018.5,
+                    SortDate=int(9223372036854775807),
+                    NameType=0,
+                    GivenMP=name_given,
+                    SurnameMP=name_surname
                 )
                 rm_session.add(profile_name_table)
 
@@ -421,7 +427,7 @@ def process_ancestry(session: Session, filtered_ids):
                     'meiosisValue': group.meiosisValue,
                     'parentCluster': group.parentCluster,
                     'IsPrimary': 1,
-                    'NameType': 6,
+                    'NameType': 0,
                 }
 
             match_groups = batch_limit(
@@ -938,7 +944,7 @@ def insert_person(person_rm_session: Session, processed_data, batch_size=limit):
                 'UniqueID': unique_id,
                 'Sex': sex_value,
                 'Color': data.get('color', ''),
-                'UTCModDate': func.julianday('now') - 2415018.5,
+                'UTCModDate': func.julianday(func.current_timestamp()) - 2415018.5,
             }
 
             if person_id is not None:
@@ -1021,7 +1027,7 @@ def insert_name(name_rm_session: Session, processed_data, batch_size=limit):
                 'Proof': 0,
                 'SurnameMP': data.get('Surname', ''),
                 'GivenMP': data.get('Given', ''),
-                'UTCModDate': func.julianday('now') - 2415018.5,
+                'UTCModDate': func.julianday(func.current_timestamp()) - 2415018.5,
             }
 
             # Check if a name record already exists for this person and name type
@@ -1087,7 +1093,7 @@ def insert_family(family_rm_session: Session, processed_data, batch_size=limit):
                 for key, value in data.items():
                     if key in FamilyTable.__table__.columns and value is not None:
                         setattr(existing_family, key, value)
-                existing_family.UTCModDate = func.julianday('now') - 2415018.5
+                existing_family.UTCModDate = func.julianday(func.current_timestamp()) - 2415018.5
                 data['FamilyID'] = existing_family.FamilyID  # Update FamilyID in data
             else:
                 # Create new record in FamilyTable
@@ -1095,7 +1101,7 @@ def insert_family(family_rm_session: Session, processed_data, batch_size=limit):
                     'FatherID': father_id,
                     'MotherID': mother_id,
                     'ChildID': child_id,
-                    'UTCModDate': func.julianday('now') - 2415018.5,
+                    'UTCModDate': func.julianday(func.current_timestamp()) - 2415018.5,
                 }
                 new_family = FamilyTable(**family_data)
                 family_rm_session.add(new_family)
@@ -1109,24 +1115,24 @@ def insert_family(family_rm_session: Session, processed_data, batch_size=limit):
                 father = family_rm_session.query(PersonTable).filter_by(PersonID=father_id).first()
                 if father:
                     father.SpouseID = data['FamilyID']
-                    father.UTCModDate = func.julianday('now') - 2415018.5
+                    father.UTCModDate = func.julianday(func.current_timestamp()) - 2415018.5
 
             if mother_id:
                 mother = family_rm_session.query(PersonTable).filter_by(PersonID=mother_id).first()
                 if mother:
                     mother.SpouseID = data['FamilyID']
-                    mother.UTCModDate = func.julianday('now') - 2415018.5
+                    mother.UTCModDate = func.julianday(func.current_timestamp()) - 2415018.5
 
             child = family_rm_session.query(PersonTable).filter_by(PersonID=child_id).first()
             if child:
                 child.ParentID = data['FamilyID']
-                child.UTCModDate = func.julianday('now') - 2415018.5
+                child.UTCModDate = func.julianday(func.current_timestamp()) - 2415018.5
             else:
                 # If no existing person, create new person record
                 new_person = PersonTable(
                     PersonID=child_id,
                     ParentID=data['FamilyID'],
-                    UTCModDate=func.julianday('now') - 2415018.5
+                    UTCModDate=func.julianday(func.current_timestamp()) - 2415018.5
                 )
                 family_rm_session.add(new_person)
 
@@ -1175,7 +1181,7 @@ def insert_child(child_rm_session: Session, processed_data, batch_size=limit):
                 for key, value in data.items():
                     if key in ChildTable.__table__.columns and value is not None:
                         setattr(existing_child, key, value)
-                existing_child.UTCModDate = func.julianday('now') - 2415018.5
+                existing_child.UTCModDate = func.julianday(func.current_timestamp()) - 2415018.5
                 # logging.debug(
                 #     f"Updated existing child record for ChildID: {child_id} and FamilyID: {family_id}")
             else:
@@ -1183,7 +1189,7 @@ def insert_child(child_rm_session: Session, processed_data, batch_size=limit):
                 child_data = {
                     'ChildID': child_id,
                     'FamilyID': family_id,
-                    'UTCModDate': func.julianday('now') - 2415018.5,
+                    'UTCModDate': func.julianday(func.current_timestamp()) - 2415018.5,
                 }
                 new_child = ChildTable(**child_data)
                 child_rm_session.add(new_child)
@@ -1218,11 +1224,7 @@ def insert_dna(dna_rm_session: Session, processed_data, selected_kits, batch_siz
             logging.info(f"Processing data for kit GUID: {selected_kit_guid}")
 
             for data in processed_data:
-
-                # Check for the specific marker that identifies data from process_matchgroup
                 if 'source' in data and data['source'] == 'process_matchgroup':
-                    # logging.debug("Data is identified as from process_matchgroup")
-
                     person_1 = dna_rm_session.query(PersonTable).filter_by(UniqueID=selected_kit_guid).first()
                     person_id_1 = person_1.PersonID if person_1 else None
 
@@ -1247,7 +1249,7 @@ def insert_dna(dna_rm_session: Session, processed_data, selected_kits, batch_siz
                         'SharedSegs': data.get('SharedSegs'),
                         'Date': date,
                         'Note': note,
-                        'UTCModDate': func.julianday('now') - 2415018.5,
+                        'UTCModDate': func.julianday(func.current_timestamp()) - 2415018.5,
                     }
 
                     # logging.debug(f"DNA data constructed for insertion: {dna_data}")
@@ -1259,7 +1261,7 @@ def insert_dna(dna_rm_session: Session, processed_data, selected_kits, batch_siz
                         # Update existing record
                         for key, value in dna_data.items():
                             setattr(existing_dna, key, value)
-                        existing_dna.UTCModDate = func.julianday('now') - 2415018.5
+                        existing_dna.UTCModDate = func.julianday(func.current_timestamp()) - 2415018.5
                         # logging.debug(f"Updated existing DNA record for ID1: {person_id_1} and ID2: {person_id_2}")
                     else:
                         # Create new record in DNATable
@@ -1346,7 +1348,6 @@ def insert_events(event_rm_session: Session, processed_data, batch_size=limit):
 
             return f"{date_type}.{bc_sign}{f_year}{f_month}{f_day}{double_date_sign}.+00000000.."
 
-        # Handle qualifiers and modifiers first
         for qual, code in qualifiers.items():
             if date_str.startswith(qual):
                 date_str = date_str[len(qual):].strip()
@@ -1560,7 +1561,7 @@ def insert_group(group_rm_session: Session, processed_data, batch_size=limit):
                 # Update existing record
                 for key, value in data.items():
                     setattr(existing_group, key, value)
-                existing_group.UTCModDate = func.julianday('now') - 2415018.5
+                existing_group.UTCModDate = func.julianday(func.current_timestamp()) - 2415018.5
                 logging.info(f"Updated existing group record for GroupID: {data['GroupID']}")
             else:
                 # Create new record in GroupTable
@@ -1568,7 +1569,7 @@ def insert_group(group_rm_session: Session, processed_data, batch_size=limit):
                     'GroupID': data.get('GroupID', None),
                     'StartID': data.get('StartID', None),
                     'EndID': data.get('EndID', None),
-                    'UTCModDate': func.julianday('now') - 2415018.5,
+                    'UTCModDate': func.julianday(func.current_timestamp()) - 2415018.5,
                 }
                 new_group = GroupTable(**group_data)
                 group_rm_session.add(new_group)
@@ -1607,7 +1608,7 @@ def insert_url(url_rm_session: Session, processed_data, batch_size=limit):
                 # Update existing record
                 for key, value in data.items():
                     setattr(existing_url, key, value)
-                existing_url.UTCModDate = func.julianday('now') - 2415018.5
+                existing_url.UTCModDate = func.julianday(func.current_timestamp()) - 2415018.5
                 logging.info(
                     f"Updated existing URL record for OwnerType {data['OwnerType']} and OwnerID {data['OwnerID']}")
             else:
@@ -1619,7 +1620,7 @@ def insert_url(url_rm_session: Session, processed_data, batch_size=limit):
                     'Name': data.get('Name', None),
                     'URL': data.get('URL', None),
                     'Note': data.get('Note', None),
-                    'UTCModDate': func.julianday('now') - 2415018.5,
+                    'UTCModDate': func.julianday(func.current_timestamp()) - 2415018.5,
                 }
                 new_url = URLTable(**url_data)
                 url_rm_session.add(new_url)
@@ -1739,7 +1740,7 @@ def main():
             insert_events(rm_session, processed_data)
             # insert_url(rm_session, processed_data)
             # insert_group(rm_session, processed_data)
-            # rebuild_all_indexes(rm_engine)
+            rebuild_all_indexes(rm_engine)
         except Exception as e:
             logging.error(f"Error during data insertion: {e}")
             logging.error(traceback.format_exc())
