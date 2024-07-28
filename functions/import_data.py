@@ -1071,9 +1071,6 @@ def insert_family(family_rm_session: Session, processed_data, batch_size=limit):
             mother_id = data.get('MotherID')
             child_id = data.get('PersonID')
 
-            # logging.debug(f"Processing family record: FamilyID: {family_id}, "
-            #               f"FatherID: {father_id}, MotherID: {mother_id}, ChildID: {child_id}")
-
             # If FamilyID is provided, look for an existing record with that FamilyID
             if family_id:
                 existing_family = family_rm_session.query(FamilyTable).filter_by(FamilyID=family_id).first()
@@ -1092,8 +1089,6 @@ def insert_family(family_rm_session: Session, processed_data, batch_size=limit):
                         setattr(existing_family, key, value)
                 existing_family.UTCModDate = func.julianday('now') - 2415018.5
                 data['FamilyID'] = existing_family.FamilyID  # Update FamilyID in data
-                # logging.debug(f"Updated existing family record: FamilyID: "
-                #               f"{existing_family.FamilyID}, ChildID: {child_id}")
             else:
                 # Create new record in FamilyTable
                 family_data = {
@@ -1108,7 +1103,32 @@ def insert_family(family_rm_session: Session, processed_data, batch_size=limit):
 
                 # Retrieve the FamilyID of the new record
                 data['FamilyID'] = new_family.FamilyID
-                # logging.debug(f"Inserted new family record: FamilyID: {data['FamilyID']}, ChildID: {child_id}")
+
+            # Update PersonTable with FamilyID as ParentID and SpouseID
+            if father_id:
+                father = family_rm_session.query(PersonTable).filter_by(PersonID=father_id).first()
+                if father:
+                    father.SpouseID = data['FamilyID']
+                    father.UTCModDate = func.julianday('now') - 2415018.5
+
+            if mother_id:
+                mother = family_rm_session.query(PersonTable).filter_by(PersonID=mother_id).first()
+                if mother:
+                    mother.SpouseID = data['FamilyID']
+                    mother.UTCModDate = func.julianday('now') - 2415018.5
+
+            child = family_rm_session.query(PersonTable).filter_by(PersonID=child_id).first()
+            if child:
+                child.ParentID = data['FamilyID']
+                child.UTCModDate = func.julianday('now') - 2415018.5
+            else:
+                # If no existing person, create new person record
+                new_person = PersonTable(
+                    PersonID=child_id,
+                    ParentID=data['FamilyID'],
+                    UTCModDate=func.julianday('now') - 2415018.5
+                )
+                family_rm_session.add(new_person)
 
             processed_count += 1
             if batch_size > 0 and processed_count % batch_size == 0:
@@ -1123,6 +1143,7 @@ def insert_family(family_rm_session: Session, processed_data, batch_size=limit):
         logging.error(traceback.format_exc())
         family_rm_session.rollback()
         raise
+
     finally:
         family_rm_session.close()
 
