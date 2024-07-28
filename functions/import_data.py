@@ -9,7 +9,10 @@ from select_kits import user_kit_data, prompt_user_for_kits
 from setup_logging import setup_logging
 # Remote Imports
 import logging
-from sqlalchemy import func
+import re
+import traceback
+from sqlalchemy.schema import CreateIndex
+from sqlalchemy import func, text, inspect
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError, MultipleResultsFound
 import uuid
@@ -102,6 +105,7 @@ def check_for_duplicates(session: Session, unique_id: str, **kwargs):
         return person
     except SQLAlchemyError as dup_e:
         logging.error(f"Error in get_or_create_person for {unique_id}: {dup_e}")
+        logging.error(traceback.format_exc())
         session.rollback()
         return None
 
@@ -216,6 +220,7 @@ def filter_selected_kits(filter_session: Session, f_selected_kits):
 
     except Exception as filter_e:
         logging.error(f"Error filtering selected kits: {filter_e}")
+        logging.error(traceback.format_exc())
         raise
 
     return test_ids
@@ -261,6 +266,7 @@ def insert_fact_type(fact_rm_session: Session):
             logging.info("Fact Type 'DNA Kit' updated in FactTypeTable.")
     except Exception as e:
         logging.error(f"Error inserting or updating Fact Type 'DNA Kit' in FactTypeTable: {e}")
+        logging.error(traceback.format_exc())
         fact_rm_session.rollback()
         raise
     finally:
@@ -337,9 +343,11 @@ def import_profiles(rm_session: Session, selected_kits):
         except MultipleResultsFound:
             logging.error(f"Multiple records found for UniqueID: {guid_value}. "
                           f"Please check the database for duplicates.")
+            logging.error(traceback.format_exc())
             rm_session.rollback()
         except Exception as e:
             logging.error(f"Error processing kit: {id_value}, GUID: {guid_value}, Name: {name_given} {name_surname}")
+            logging.error(traceback.format_exc())
             logging.exception(e)
             rm_session.rollback()
 
@@ -507,6 +515,7 @@ def process_ancestry(session: Session, filtered_ids):
             except Exception as e:
                 logging.error(f"An error occurred while processing Ancestry match trees: {str(e)}")
                 logging.exception("Exception details:")
+                logging.error(traceback.format_exc())
 
         # Process Ancestry_TreeData data
         if ancestry_treedata and filtered_ids.get('Ancestry_TreeData'):
@@ -538,6 +547,7 @@ def process_ancestry(session: Session, filtered_ids):
             except Exception as e:
                 logging.error(f"An error occurred while processing Ancestry tree data: {str(e)}")
                 logging.exception("Exception details:")
+                logging.error(traceback.format_exc())
 
         # Process Ancestry_ICW data
         if ancestry_icw and filtered_ids.get('Ancestry_ICW'):
@@ -569,6 +579,7 @@ def process_ancestry(session: Session, filtered_ids):
             except Exception as e:
                 logging.error(f"An error occurred while processing Ancestry ICW data: {str(e)}")
                 logging.exception("Exception details:")
+                logging.error(traceback.format_exc())
 
         # Process Ancestry_matchEthnicity
         if ancestry_matchethnicity and filtered_ids.get('Ancestry_matchEthnicity'):
@@ -599,6 +610,7 @@ def process_ancestry(session: Session, filtered_ids):
             except Exception as e:
                 logging.error(f"An error occurred while processing Ancestry match ethnicity data: {str(e)}")
                 logging.exception("Exception details:")
+                logging.error(traceback.format_exc())
 
         # Process AncestryAncestorCouple
         if ancestry_ancestorcouple and filtered_ids.get('AncestryAncestorCouple'):
@@ -659,6 +671,7 @@ def process_ancestry(session: Session, filtered_ids):
 
     except Exception as e:
         logging.error(f"An error occurred during processing Ancestry data: {str(e)}")
+        logging.error(traceback.format_exc())
 
     return processed_ancestry_data
 
@@ -770,6 +783,7 @@ def process_ftdna(session: Session, filtered_ids):
 
     except Exception as e:
         logging.error(f"Error processing FTDNA data: {e}")
+        logging.error(traceback.format_exc())
 
     return processed_ftdna_data
 
@@ -887,6 +901,7 @@ def process_mh(session: Session, filtered_ids):
 
     except Exception as e:
         logging.error(f"Error processing MyHeritage data: {e}")
+        logging.error(traceback.format_exc())
 
     return processed_mh_data
 
@@ -898,6 +913,7 @@ def insert_person(person_rm_session: Session, processed_data, batch_size=limit):
 
     if person_rm_session is None:
         logging.error("Invalid person_rm_session object provided")
+        logging.error(traceback.format_exc())
         raise ValueError("A valid Session object must be provided")
 
     try:
@@ -957,6 +973,7 @@ def insert_person(person_rm_session: Session, processed_data, batch_size=limit):
 
     except Exception as e:
         logging.error(f"Error inserting or updating PersonTable: {e}")
+        logging.error(traceback.format_exc())
         person_rm_session.rollback()
         raise
 
@@ -971,6 +988,7 @@ def insert_name(name_rm_session: Session, processed_data, batch_size=limit):
 
     if name_rm_session is None:
         logging.error("Invalid name_rm_session object provided")
+        logging.error(traceback.format_exc())
         raise ValueError("A valid Session object must be provided")
 
     try:
@@ -998,6 +1016,9 @@ def insert_name(name_rm_session: Session, processed_data, batch_size=limit):
                 'Given': data.get('Given', ''),
                 'NameType': data.get('NameType', ''),
                 'IsPrimary': data.get('IsPrimary', ''),
+                'SortDate': int(9223372036854775807),
+                'IsPrivate': 0,
+                'Proof': 0,
                 'SurnameMP': data.get('Surname', ''),
                 'GivenMP': data.get('Given', ''),
                 'UTCModDate': func.julianday('now') - 2415018.5,
@@ -1028,6 +1049,7 @@ def insert_name(name_rm_session: Session, processed_data, batch_size=limit):
 
     except Exception as e:
         logging.error(f"Error inserting or updating NameTable: {e}")
+        logging.error(traceback.format_exc())
         name_rm_session.rollback()
         raise
 
@@ -1098,6 +1120,7 @@ def insert_family(family_rm_session: Session, processed_data, batch_size=limit):
 
     except Exception as e:
         logging.error(f"Error inserting or updating FamilyTable: {e}")
+        logging.error(traceback.format_exc())
         family_rm_session.rollback()
         raise
     finally:
@@ -1154,6 +1177,7 @@ def insert_child(child_rm_session: Session, processed_data, batch_size=limit):
 
     except Exception as e:
         logging.error(f"Error inserting or updating ChildTable: {e}")
+        logging.error(traceback.format_exc())
         child_rm_session.rollback()
         raise
     finally:
@@ -1231,134 +1255,271 @@ def insert_dna(dna_rm_session: Session, processed_data, selected_kits, batch_siz
 
     except Exception as e:
         logging.error(f"Error inserting or updating DNATable: {e}")
+        logging.error(traceback.format_exc())
         dna_rm_session.rollback()
         raise
     finally:
         dna_rm_session.close()
 
 
-# Import data into RootsMagic EventTable
-def insert_event(event_rm_session: Session, processed_data, batch_size=limit):
-    logging.getLogger('insert_event')
-    logging.info("Inserting or updating events in EventTable...")
+def insert_events(event_rm_session: Session, processed_data, batch_size=limit):
+    logger = logging.getLogger('insert_events')
+    logger.info("Inserting or updating places and events...")
+
+    def transform_date(date_str):
+        if not date_str:
+            return "."
+
+        date_str = date_str.strip().lower()
+
+        # Check if the date is already in YYYY-MM-DD format
+        if re.match(r"^\d{4}-\d{2}-\d{2}$", date_str):
+            year, month, day = date_str.split('-')
+            return f"D.+{year}{month}{day}.+00000000.."
+
+        # Define month mapping
+        month_map = {
+            "jan": "01", "feb": "02", "mar": "03", "apr": "04",
+            "may": "05", "jun": "06", "jul": "07", "aug": "08",
+            "sep": "09", "oct": "10", "nov": "11", "dec": "12",
+            "january": "01", "february": "02", "march": "03", "april": "04",
+            "june": "06", "july": "07", "august": "08", "september": "09",
+            "october": "10", "november": "11", "december": "12"
+        }
+
+        # Regular expressions for different date formats
+        full_date_re = r"^(?P<day>\d{1,2}) (?P<month>\w{3,9}) (?P<year>-?\d{1,4})(?: BC)?$"
+        month_year_re = r"^(?P<month>\w{3,9}) (?P<year>-?\d{1,4})(?: BC)?$"
+        year_only_re = r"^(?P<year>-?\d{1,4})(?: BC)?$"
+        day_month_re = r"^(?P<day>\d{1,2}) (?P<month>\w{3,9})$"
+        month_only_re = r"^(?P<month>\w{3,9})$"
+        between_years_re = (r"^(T?between|bet) (?P<start_year>-?\d{1,4})(?: BC)? "
+                            r"(and|-) (?P<end_year>-?\d{1,4})(?: BC)?$")
+        double_date_re = r"^(?P<day>\d{1,2}) (?P<month>\w{3,9}) (?P<year>\d{4})/(?P<alt_year>\d{2})$"
+        quaker_date_re = r"^(?P<day>\d{1,2})da (?P<month>\d{1,2})mo (?P<year>\d{4})$"
+
+        # Date qualifiers and modifiers
+        qualifiers = {
+            "abt": "A", "about": "A", "est": "E", "calc": "L", "ca": "C", "say": "S"
+        }
+
+        # Directional modifiers
+        directional_modifiers = {
+            "bef.": "B", "bef": "B", "before": "B", "by": "Y", "to": "T", "until": "U",
+            "from": "F", "since": "I", "aft": "A", "after": "A"
+        }
+
+        # Qualitative modifiers
+        qualitative_modifiers = {
+            "cert": "6", "prob": "5", "poss": "4", "lkly": "3", "appar": "2", "prhps": "1", "maybe": "?"
+        }
+
+        def format_date(f_year, f_month, f_day, f_bc=False, double_date=False, quaker=False):
+            f_year = f_year.zfill(4) if f_year else "0000"
+            f_month = f_month.zfill(2) if f_month else "00"
+            f_day = f_day.zfill(2) if f_day else "00"
+
+            date_type = "Q" if quaker else "D"
+            bc_sign = "-" if f_bc else "+"
+            double_date_sign = "/" if double_date else "."
+
+            return f"{date_type}.{bc_sign}{f_year}{f_month}{f_day}{double_date_sign}.+00000000.."
+
+        # Handle qualifiers and modifiers first
+        for qual, code in qualifiers.items():
+            if date_str.startswith(qual):
+                date_str = date_str[len(qual):].strip()
+                date_code = transform_date(date_str)
+                return f"{date_code[:12]}{code}{date_code[13:]}"
+
+        for mod, code in directional_modifiers.items():
+            if date_str.startswith(mod):
+                date_str = date_str[len(mod):].strip()
+                date_code = transform_date(date_str)
+                return f"{date_code[:1]}{code}{date_code[2:]}"
+
+        for mod, code in qualitative_modifiers.items():
+            if date_str.startswith(mod):
+                date_str = date_str[len(mod):].strip()
+                date_code = transform_date(date_str)
+                return f"{date_code[:12]}{code}{date_code[13:]}"
+
+        # Handle full date
+        match = re.match(full_date_re, date_str)
+        if match:
+            day = match.group("day")
+            month = month_map.get(match.group("month"), "00")
+            year = match.group("year")
+            bc = "BC" in date_str
+            return format_date(year, month, day, bc)
+
+        # Handle month and year
+        match = re.match(month_year_re, date_str)
+        if match:
+            month = month_map.get(match.group("month"), "00")
+            year = match.group("year")
+            bc = "BC" in date_str
+            return format_date(year, month, None, bc)
+
+        # Handle year only
+        match = re.match(year_only_re, date_str)
+        if match:
+            year = match.group("year")
+            bc = "BC" in date_str
+            return format_date(year, None, None, bc)
+
+        # Handle day and month only
+        match = re.match(day_month_re, date_str)
+        if match:
+            day = match.group("day")
+            month = month_map.get(match.group("month"), "00")
+            return format_date(None, month, day)
+
+        # Handle month only
+        match = re.match(month_only_re, date_str)
+        if match:
+            month = month_map.get(match.group("month"), "00")
+            return format_date(None, month, None)
+
+        # Handle double dates
+        match = re.match(double_date_re, date_str)
+        if match:
+            day = match.group("day")
+            month = month_map.get(match.group("month"), "00")
+            year = match.group("year")
+            return format_date(year, month, day, double_date=True)
+
+        # Handle Quaker dates
+        match = re.match(quaker_date_re, date_str)
+        if match:
+            day = match.group("day")
+            month = match.group("month")
+            year = match.group("year")
+            return format_date(year, month, day, quaker=True)
+
+        # Handle "between" years
+        match = re.match(between_years_re, date_str)
+        if match:
+            start_year = match.group("start_year")
+            end_year = match.group("end_year")
+            start_bc = "BC" in date_str.split("and")[0]
+            end_bc = "BC" in date_str.split("and")[1]
+            start_sign = "-" if start_bc else "+"
+            end_sign = "-" if end_bc else "+"
+            return f"R.{start_sign}{start_year.zfill(4)}0000..{end_sign}{end_year.zfill(4)}0000.."
+
+        # Default to text date
+        return f"T{date_str}"
 
     try:
         processed_count = 0
 
         for data in processed_data:
             try:
-                # Ensure 'OwnerID' and 'EventType' exist in data
-                if 'OwnerID' not in data:
-                    logging.warning(f"Missing required keys in data: {data}")
-                    continue  # Skip processing this data item
+                if data is None:
+                    logger.warning("Encountered None data entry, skipping...")
+                    continue
 
-                # Check if an event record already exists for the given OwnerID and EventType
-                existing_event = event_rm_session.query(EventTable).filter_by(
-                    OwnerID=data['OwnerID'], EventType=data['EventType']).first()
+                person_id = data.get('PersonID')
+                if person_id is None:
+                    logger.warning(f"Missing PersonID in data: {data}")
+                    continue
 
-                if existing_event:
-                    # Update existing record
-                    for key, value in data.items():
-                        setattr(existing_event, key, value)
-                    existing_event.UTCModDate = func.julianday('now') - 2415018.5
-                    logging.info(
-                        f"Updated existing event record for OwnerID: {data['OwnerID']} "
-                        f"and EventType: {data['EventType']}")
-                else:
-                    # Create new record in EventTable
-                    event_data = {
-                        'EventType': data.get('EventType', None),
-                        'OwnerType': 1,
-                        'OwnerID': data.get('match_trees', {}).get('personId', None),
-                        'FamilyID': data.get('FamilyID', None),
-                        'PlaceID': data.get('PlaceID', None),
-                        'SiteID': data.get('SiteID', None),
-                        'Date': data.get('Date', None),
-                        'SortDate': data.get('SortDate', None),
-                        'IsPrimary': data.get('IsPrimary', None),
-                        'IsPrivate': data.get('IsPrivate', None),
-                        'Proof': data.get('Proof', None),
-                        'Status': data.get('Status', None),
-                        'Sentence': data.get('Sentence', None),
-                        'Details': data.get('Details', None),
-                        'Note': data.get('Note', None),
-                        'UTCModDate': func.julianday('now') - 2415018.5,
-                    }
-                    new_event = EventTable(**event_data)
-                    event_rm_session.add(new_event)
-                    logging.info(
-                        f"Inserted new event record for OwnerID: {data['OwnerID']} and EventType: {data['EventType']}")
+                # Ensure person_id is an integer
+                try:
+                    person_id = int(person_id)
+                except ValueError:
+                    logger.warning(f"Invalid PersonID: {person_id}. Skipping this record.")
+                    continue
+
+                # Insert or update places
+                place_ids = {}
+                for place_type in ['birthplace', 'deathplace']:
+                    place_name = data.get(place_type)
+                    if place_name is None:
+                        # logger.warning(f"Missing {place_type} in data: {data}")
+                        continue
+
+                    existing_place = event_rm_session.query(PlaceTable).filter_by(Name=place_name).first()
+
+                    if existing_place:
+                        existing_place.UTCModDate = func.julianday(func.current_timestamp()) - 2415018.5
+                        # logger.info(f"Updated existing place record for Name: {place_name}")
+                        place_ids[place_type] = existing_place.PlaceID
+                    else:
+                        new_place = PlaceTable(
+                            Name=place_name,
+                            PlaceType=0,
+                            MasterID=0,
+                            fsID=0,
+                            anID=0,
+                            Latitude=0,
+                            Longitude=0,
+                            LatLongExact=0,
+                            UTCModDate=func.julianday(func.current_timestamp()) - 2415018.5
+                        )
+                        event_rm_session.add(new_place)
+                        event_rm_session.flush()
+                        # logger.info(f"Inserted new place record for Name: {place_name}")
+                        place_ids[place_type] = new_place.PlaceID
+
+                # Insert or update events
+                for event_type in ['birthdate', 'deathdate']:
+                    event_type_map = {'birthdate': 1, 'deathdate': 2}
+                    raw_event_date = data.get(event_type)
+                    if raw_event_date is None:
+                        # logger.warning(f"Missing {event_type} in data: {data}")
+                        continue
+
+                    event_date = transform_date(raw_event_date)
+
+                    existing_event = event_rm_session.query(EventTable).filter_by(
+                        OwnerID=person_id, EventType=event_type_map[event_type]).first()
+
+                    if existing_event:
+                        existing_event.Date = event_date
+                        existing_event.UTCModDate = func.julianday(func.current_timestamp()) - 2415018.5
+                        # logger.info(
+                        # f"Updated existing event record for OwnerID: "
+                        # f"{person_id} and EventType: {event_type_map[event_type]}")
+                    else:
+                        new_event = EventTable(
+                            EventType=event_type_map[event_type],
+                            OwnerType=0,
+                            OwnerID=person_id,
+                            PlaceID=place_ids.get(f"{event_type[:-4]}place", 0),
+                            Date=event_date,
+                            FamilyID=0,
+                            SiteID=0,
+                            IsPrimary=0,
+                            IsPrivate=0,
+                            Proof=0,
+                            Status=0,
+                            UTCModDate=func.julianday(func.current_timestamp()) - 2415018.5
+                        )
+                        event_rm_session.add(new_event)
+                        # logger.info(
+                        # f"Inserted new event record for OwnerID: "
+                        # f"{person_id} and EventType: {event_type_map[event_type]}")
 
                 processed_count += 1
                 if batch_size > 0 and processed_count % batch_size == 0:
                     event_rm_session.flush()
 
             except Exception as inner_e:
-                logging.error(f"Error processing data {data}: {inner_e}")
+                logger.error(f"Error processing data {data}: {inner_e}")
+                logger.error(traceback.format_exc())
 
         event_rm_session.commit()
-        logging.info(f"Processed {processed_count} event records.")
+        logger.info(f"Processed {processed_count} event records.")
 
     except Exception as e:
-        logging.error(f"Error inserting or updating EventTable: {e}")
+        logger.error(f"Error inserting or updating EventTable and PlaceTable: {e}")
+        logger.error(traceback.format_exc())
         event_rm_session.rollback()
         raise
     finally:
         event_rm_session.close()
-
-
-# Import data into RootsMagic PlaceTable
-def insert_place(place_rm_session: Session, processed_data, batch_size=limit):
-    logging.getLogger('insert_place')
-    logging.info("Inserting or updating places in PlaceTable...")
-
-    try:
-        processed_count = 0
-
-        for data in processed_data:
-            # Check if a place record already exists for the given Name
-            existing_place = place_rm_session.query(PlaceTable).filter_by(Name=data['Name']).first()
-
-            if existing_place:
-                # Update existing record
-                for key, value in data.items():
-                    setattr(existing_place, key, value)
-                existing_place.UTCModDate = func.julianday('now') - 2415018.5
-                logging.info(f"Updated existing place record for Name: {data['Name']}")
-            else:
-                # Create new record in PlaceTable
-                place_data = {
-                    'PlaceType': data.get('PlaceType', None),
-                    'Name': data.get('Name', None),
-                    'Abbrev': data.get('Abbrev', None),
-                    'Normalized': data.get('Normalized', None),
-                    'Latitude': data.get('Latitude', None),
-                    'Longitude': data.get('Longitude', None),
-                    'LatLongExact': data.get('LatLongExact', None),
-                    'MasterID': data.get('MasterID', None),
-                    'Note': data.get('Note', None),
-                    'Reverse': data.get('Reverse', None),
-                    'fsID': data.get('fsID', None),
-                    'anID': data.get('anID', None),
-                    'UTCModDate': func.julianday('now') - 2415018.5,
-                }
-                new_place = PlaceTable(**place_data)
-                place_rm_session.add(new_place)
-                logging.info(f"Inserted new place record for Name: {data['Name']}")
-
-            processed_count += 1
-            if batch_size > 0 and processed_count % batch_size == 0:
-                place_rm_session.flush()
-
-        place_rm_session.commit()
-        logging.info(f"Processed {processed_count} place records.")
-
-    except Exception as e:
-        logging.error(f"Error inserting or updating PlaceTable: {e}")
-        place_rm_session.rollback()
-        raise
-    finally:
-        place_rm_session.close()
 
 
 # Import data into RootsMagic GroupTable
@@ -1401,6 +1562,7 @@ def insert_group(group_rm_session: Session, processed_data, batch_size=limit):
 
     except Exception as e:
         logging.error(f"Error inserting or updating GroupTable: {e}")
+        logging.error(traceback.format_exc())
         group_rm_session.rollback()
         raise
     finally:
@@ -1451,10 +1613,67 @@ def insert_url(url_rm_session: Session, processed_data, batch_size=limit):
 
     except Exception as e:
         logging.error(f"Error inserting or updating URLTable: {e}")
+        logging.error(traceback.format_exc())
         url_rm_session.rollback()
         raise
     finally:
         url_rm_session.close()
+
+
+def rebuild_all_indexes(engine):
+    inspector = inspect(engine)
+
+    tables_indexes = [
+        (ChildTable, ['idxChildOrder', 'idxChildID', 'idxChildFamilyID']),
+        (DNATable, ['idxDnaId2', 'idxDnaId1']),
+        (EventTable, ['idxOwnerEvent', 'idxOwnerDate']),
+        (FactTypeTable, ['idxFactTypeName', 'idxFactTypeAbbrev', 'idxFactTypeGedcomTag']),
+        (FamilyTable, ['idxFamilyMotherID', 'idxFamilyFatherID']),
+        (NameTable,
+         ['idxSurnameGiven', 'idxSurnameGivenMP', 'idxNamePrimary', 'idxGivenMP', 'idxNameOwnerID', 'idxGiven',
+          'idxSurname', 'idxSurnameMP']),
+        (PlaceTable, ['idxPlaceName', 'idxPlaceAbbrev', 'idxReversePlaceName']),
+        (URLTable, ['idxUrlOwnerID', 'idxUrlOwnerType']),
+    ]
+
+    with engine.begin() as conn:
+        for table, index_names in tables_indexes:
+            table_name = table.__tablename__
+            print(f"Processing table: {table_name}")
+
+            # Drop all existing indexes for this table
+            existing_indexes = inspector.get_indexes(table_name)
+            for idx in existing_indexes:
+                if idx['name'] in index_names:
+                    conn.execute(text(f"DROP INDEX IF EXISTS {idx['name']}"))
+                    print(f"Dropped index {idx['name']} from {table_name}")
+
+            # Reindex the table
+            if engine.dialect.name == 'sqlite':
+                # For SQLite, the REINDEX command is used without specifying a table
+                conn.execute(text("REINDEX"))
+                print(f"Reindexed all tables (SQLite)")
+            else:
+                # For other databases, specify the table
+                conn.execute(text(f"REINDEX TABLE {table_name}"))
+                print(f"Reindexed table {table_name}")
+
+            # Recreate the indexes
+            for index_name in index_names:
+                index = next((idx for idx in table.__table__.indexes if idx.name == index_name), None)
+                if index:
+                    create_idx = CreateIndex(index)
+                    conn.execute(create_idx)
+                    print(f"Recreated index {index_name} for table {table_name}")
+                else:
+                    print(f"Warning: Index {index_name} not found for table {table_name}")
+
+            # Analyze the table
+            if engine.dialect.name != 'sqlite':
+                conn.execute(text(f"ANALYZE {table_name}"))
+                print(f"Analyzed table {table_name}")
+
+    print("All indexes rebuilt and tables reindexed successfully")
 
 
 def main():
@@ -1496,12 +1715,13 @@ def main():
             insert_family(rm_session, processed_data)
             insert_child(rm_session, processed_data)
             insert_dna(rm_session, processed_data, selected_kits)
-            # insert_place(rm_session, processed_data)
-            # insert_event(rm_session, processed_data)
+            insert_events(rm_session, processed_data)
             # insert_url(rm_session, processed_data)
             # insert_group(rm_session, processed_data)
+            # rebuild_all_indexes(rm_engine)
         except Exception as e:
             logging.error(f"Error during data insertion: {e}")
+            logging.error(traceback.format_exc())
     else:
         logging.warning("No kits found.")
 
