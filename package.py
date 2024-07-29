@@ -12,7 +12,6 @@ files = [
     "classes/mh_classes.py",
     "functions/select_kits.py",
     "functions/import_data.py",
-    "functions/create_indices.py",
 ]
 
 import_lines = set()
@@ -50,7 +49,7 @@ for fname in files:
     extract_imports_and_base(file_path)
 
 # Write imports and file contents to DG2RM.py
-with open("DG2RM.py", "w") as outfile:
+with open("RootMatchIt.py", "w") as outfile:
     # Write unique imports
     outfile.write("\n".join(sorted(import_lines)) + "\n\n")
 
@@ -64,4 +63,4 @@ with open("DG2RM.py", "w") as outfile:
             reformatted_code = black.format_str(source_code, mode=black.FileMode()).strip()
             outfile.write("\n" + reformatted_code + "\n\n")
 
-print("\nConsolidation complete. Output written to DG2RM.py. Check formatting before pushing to git.")
+print("\nConsolidation complete. Output written to RootMatchIt.py. Check formatting before pushing to git.")
