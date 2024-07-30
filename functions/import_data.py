@@ -47,32 +47,20 @@ mh_tree = 0
 
 
 # Set a batch limit via the Limit global variable
-def batch_limit(session, table_class, filter_ids, process_func, apply_limit, batch_size=999):
+def batch_limit(session, table_class, filter_ids, process_func, apply_limit):
+    query = session.query(table_class).filter(table_class.Id.in_(filter_ids))
+    if apply_limit > 0:
+        query = query.limit(apply_limit)
+    limited_data = query.all()
+
+    # Fetch related person data for Ancestry_matchTrees
     processed_data = []
-    total_processed = 0
-
-    # Break down filter_ids into batches
-    for i in range(0, len(filter_ids), batch_size):
-        batch_ids = filter_ids[i:i + batch_size]
-
-        query = session.query(table_class).filter(table_class.Id.in_(batch_ids))
-        if apply_limit > 0:
-            query = query.limit(apply_limit - total_processed)  # Adjust limit based on already processed data
-
-        limited_data = query.all()
-
-        # Fetch related person data for Ancestry_matchTrees
-        for item in limited_data:
-            if isinstance(item, Ancestry_matchTrees):
-                person_data = session.query(Ancestry_matchTrees).filter_by(Id=item.Id).first()
-                processed_data.append(process_func(item, person_data))
-            else:
-                processed_data.append(process_func(item))
-
-        total_processed += len(limited_data)
-
-        if 0 < apply_limit <= total_processed:
-            break
+    for item in limited_data:
+        if isinstance(item, Ancestry_matchTrees):
+            person_data = session.query(Ancestry_matchTrees).filter_by(Id=item.Id).first()
+            processed_data.append(process_func(item, person_data))
+        else:
+            processed_data.append(process_func(item))
 
     return processed_data[:apply_limit] if apply_limit > 0 else processed_data
 
@@ -1236,37 +1224,18 @@ def insert_dna(dna_rm_session: Session, processed_data, selected_kits, batch_siz
             logging.info(f"Processing data for kit GUID: {selected_kit_guid}")
 
             for data in processed_data:
-                logging.debug(f"Processing data entry: {data}")
+                if 'source' in data and data['source'] == 'process_matchgroup':
+                    person_1 = dna_rm_session.query(PersonTable).filter_by(UniqueID=selected_kit_guid).first()
+                    person_id_1 = person_1.PersonID if person_1 else None
 
-                if 'source' in data:
-                    if data['source'] == 'process_matchgroup':
-                        logging.info("Processing matchgroup data...")
-                        person_1 = dna_rm_session.query(PersonTable).filter_by(UniqueID=selected_kit_guid).first()
-                        person_id_1 = person_1.PersonID if person_1 else None
-                        person_id_2 = data.get('PersonID')
+                    person_id_2 = data.get('PersonID')
 
-                        label1 = f"{data['Given']} {data['Surname']}"
-                        label2 = data['unique_id']
-                        note = (f"https://www.ancestry.com/discoveryui-matches/compare/"
-                                f"{selected_kit_guid}/with/{data['unique_id']}")
-                        shared_cm = data.get('sharedCM')
-                        date = data.get('Date') or data.get('matchRunDate')
-
-                    elif data['source'] == 'process_icw':
-                        logging.info("Processing ICW data...")
-                        person_id_1 = data.get('PersonID')
-                        person_id_2 = data.get('matchGuid')
-
-                        label1 = f"ICW {data['matchGuid']}"
-                        label2 = data['testGuid']
-                        note = (f"https://www.ancestry.com/discoveryui-matches/compare/"
-                                f"{selected_kit_guid}/with/{data['matchGuid']}")
-                        shared_cm = data.get('sharedCM')
-                        date = data.get('Date')
-
-                    else:
-                        logging.warning(f"Unknown data source: {data['source']}")
-                        continue
+                    label1 = f"{data['Given']} {data['Surname']}"
+                    label2 = data['unique_id']
+                    note = (f"https://www.ancestry.com/discoveryui-matches/compare/"
+                            f"{selected_kit_guid}/with/{data['unique_id']}")
+                    shared_cm = data.get('sharedCM')
+                    date = data.get('Date') or data.get('matchRunDate')
 
                     # Construct dna_data for insertion
                     dna_data = {
@@ -1277,13 +1246,13 @@ def insert_dna(dna_rm_session: Session, processed_data, selected_kits, batch_siz
                         'DNAProvider': data.get('DNAProvider'),
                         'SharedCM': shared_cm,
                         'SharedPercent': round(shared_cm / 69, 2) if shared_cm else None,
-                        'SharedSegs': data.get('numSharedSegments'),
+                        'SharedSegs': data.get('SharedSegs'),
                         'Date': date,
                         'Note': note,
                         'UTCModDate': func.julianday(func.current_timestamp()) - 2415018.5,
                     }
 
-                    logging.debug(f"DNA data constructed for insertion: {dna_data}")
+                    # logging.debug(f"DNA data constructed for insertion: {dna_data}")
 
                     # Check if a DNA record already exists for the given ID1 and ID2
                     existing_dna = dna_rm_session.query(DNATable).filter_by(ID1=person_id_1, ID2=person_id_2).first()
@@ -1293,12 +1262,12 @@ def insert_dna(dna_rm_session: Session, processed_data, selected_kits, batch_siz
                         for key, value in dna_data.items():
                             setattr(existing_dna, key, value)
                         existing_dna.UTCModDate = func.julianday(func.current_timestamp()) - 2415018.5
-                        logging.debug(f"Updated existing DNA record for ID1: {person_id_1} and ID2: {person_id_2}")
+                        # logging.debug(f"Updated existing DNA record for ID1: {person_id_1} and ID2: {person_id_2}")
                     else:
                         # Create new record in DNATable
                         new_dna = DNATable(**dna_data)
                         dna_rm_session.add(new_dna)
-                        logging.debug(f"Inserted new DNA record for ID1: {person_id_1} and ID2: {person_id_2}")
+                        # logging.debug(f"Inserted new DNA record for ID1: {person_id_1} and ID2: {person_id_2}")
 
                     processed_count += 1
                     if batch_size > 0 and processed_count % batch_size == 0:
