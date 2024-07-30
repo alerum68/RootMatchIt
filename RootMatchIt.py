@@ -755,7 +755,7 @@ def setup_logging():
     root_logger = logging.getLogger()
     if not root_logger.handlers:
         root_logger.setLevel(logging.DEBUG)
-        log_dir = "../logs"
+        log_dir = "/logs"
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
         formatted_datetime = datetime.now().strftime("(%Y-%m-%d, %H:%M:%S)")
