@@ -47,20 +47,32 @@ mh_tree = 0
 
 
 # Set a batch limit via the Limit global variable
-def batch_limit(session, table_class, filter_ids, process_func, apply_limit):
-    query = session.query(table_class).filter(table_class.Id.in_(filter_ids))
-    if apply_limit > 0:
-        query = query.limit(apply_limit)
-    limited_data = query.all()
-
-    # Fetch related person data for Ancestry_matchTrees
+def batch_limit(session, table_class, filter_ids, process_func, apply_limit, batch_size=999):
     processed_data = []
-    for item in limited_data:
-        if isinstance(item, Ancestry_matchTrees):
-            person_data = session.query(Ancestry_matchTrees).filter_by(Id=item.Id).first()
-            processed_data.append(process_func(item, person_data))
-        else:
-            processed_data.append(process_func(item))
+    total_processed = 0
+
+    # Break down filter_ids into batches
+    for i in range(0, len(filter_ids), batch_size):
+        batch_ids = filter_ids[i:i + batch_size]
+
+        query = session.query(table_class).filter(table_class.Id.in_(batch_ids))
+        if apply_limit > 0:
+            query = query.limit(apply_limit - total_processed)  # Adjust limit based on already processed data
+
+        limited_data = query.all()
+
+        # Fetch related person data for Ancestry_matchTrees
+        for item in limited_data:
+            if isinstance(item, Ancestry_matchTrees):
+                person_data = session.query(Ancestry_matchTrees).filter_by(Id=item.Id).first()
+                processed_data.append(process_func(item, person_data))
+            else:
+                processed_data.append(process_func(item))
+
+        total_processed += len(limited_data)
+
+        if 0 < apply_limit <= total_processed:
+            break
 
     return processed_data[:apply_limit] if apply_limit > 0 else processed_data
 
