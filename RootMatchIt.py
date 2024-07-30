@@ -14,7 +14,7 @@ from sqlalchemy.exc import MultipleResultsFound, SQLAlchemyError
 from sqlalchemy.orm import declarative_base, relationship, Session, sessionmaker
 from sqlalchemy.schema import CreateIndex
 
-limit = 500
+limit = 0
 ancestry_matchgroups = 1
 ancestry_matchtrees = 1
 ancestry_treedata = 1
