@@ -120,11 +120,10 @@ def check_for_duplicates(session: Session, unique_id: str, **kwargs):
 
 # Filter results based on kits selected via select_kits function.
 def filter_selected_kits(filter_session: Session, f_selected_kits):
-    global ancestry_matchgroups, ancestry_matchtrees, ancestry_treedata, \
-        ancestry_icw, ancestry_ancestorcouple, ancestry_matchethnicity
-    global ftdna_matches2, ftdna_chromo2, ftdna_icw2, dg_tree, dg_individual, \
-        mh_match, mh_ancestors, mh_chromo, mh_icw, mh_tree
-
+    global ancestry_matchgroups, ancestry_matchtrees, ancestry_treedata, ancestry_icw, \
+        ancestry_ancestorcouple, ancestry_matchethnicity
+    global ftdna_matches2, ftdna_chromo2, ftdna_icw2, dg_tree, dg_individual
+    global mh_match, mh_ancestors, mh_chromo, mh_icw, mh_tree
     logging.getLogger('filter_selected_kits')
     logging.info("Filtering selected kits...")
 
@@ -144,10 +143,15 @@ def filter_selected_kits(filter_session: Session, f_selected_kits):
                 Ancestry_matchGroups.testGuid.in_(selected_guids)).all()
             test_ids['Ancestry_matchGroups'] = [match.Id for match in ancestry_matches]
 
-        if ancestry_matchtrees:
-            ancestry_matches_trees = filter_session.query(Ancestry_matchTrees).filter(
-                Ancestry_matchTrees.matchid.in_(selected_guids)).all()
-            test_ids['Ancestry_matchTrees'] = [match.Id for match in ancestry_matches_trees]
+            # Get matchGuids for use in ancestry_matchtrees
+            match_guids = [group.matchGuid for group in ancestry_matches]
+
+            if ancestry_matchtrees:
+                # Use both selected_guids and match_guids for ancestry_matchtrees
+                guids_to_check = selected_guids + match_guids
+                ancestry_matches_trees = filter_session.query(Ancestry_matchTrees).filter(
+                    Ancestry_matchTrees.matchid.in_(guids_to_check)).all()
+                test_ids['Ancestry_matchTrees'] = [match.Id for match in ancestry_matches_trees]
 
         if ancestry_treedata:
             ancestry_tree_data = filter_session.query(Ancestry_TreeData).filter(
