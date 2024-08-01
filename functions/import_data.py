@@ -61,13 +61,9 @@ def batch_limit(session, table_class, filter_ids, process_func, apply_limit, bat
 
         limited_data = query.all()
 
-        # Fetch related person data for Ancestry_matchTrees
+        # Process each item in the limited data using the provided process function
         for item in limited_data:
-            if isinstance(item, Ancestry_matchTrees):
-                person_data = session.query(Ancestry_matchTrees).filter_by(Id=item.Id).first()
-                processed_data.append(process_func(item, person_data))
-            else:
-                processed_data.append(process_func(item))
+            processed_data.append(process_func(item))
 
         total_processed += len(limited_data)
 
@@ -178,16 +174,15 @@ def filter_selected_kits(filter_session: Session, f_selected_kits):
             test_ids['Ancestry_matchEthnicity'] = [ethnicity.Id for ethnicity in ancestry_match_ethnicity]
 
         # FTDNA filters
-        if ftdna_matches2 or ftdna_chromo2 or ftdna_icw2 or dg_tree or dg_individual:
-            if ftdna_matches2:
-                ftdna_matches = filter_session.query(FTDNA_Matches2).filter(
-                    FTDNA_Matches2.eKit1.in_(selected_guids)).all()
-                test_ids['FTDNA_Matches2'] = [match.Id for match in ftdna_matches]
+        if ftdna_matches2:
+            ftdna_matches = filter_session.query(FTDNA_Matches2).filter(
+                FTDNA_Matches2.eKit1.in_(selected_guids)).all()
+            test_ids['FTDNA_Matches2'] = [match.Id for match in ftdna_matches]
 
-            if ftdna_chromo2:
-                ftdna_chromo = filter_session.query(FTDNA_Chromo2).filter(
-                    FTDNA_Chromo2.eKit1.in_(selected_guids)).all()
-                test_ids['FTDNA_Chromo2'] = [chromo.Id for chromo in ftdna_chromo]
+        if ftdna_chromo2:
+            ftdna_chromo = filter_session.query(FTDNA_Chromo2).filter(
+                FTDNA_Chromo2.eKit1.in_(selected_guids)).all()
+            test_ids['FTDNA_Chromo2'] = [chromo.Id for chromo in ftdna_chromo]
 
             if ftdna_icw2:
                 ftdna_icw = filter_session.query(FTDNA_ICW2).filter(
