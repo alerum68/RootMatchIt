@@ -120,10 +120,11 @@ def check_for_duplicates(session: Session, unique_id: str, **kwargs):
 
 # Filter results based on kits selected via select_kits function.
 def filter_selected_kits(filter_session: Session, f_selected_kits):
-    global ancestry_matchgroups, ancestry_matchtrees, ancestry_treedata, ancestry_icw, \
-        ancestry_ancestorcouple, ancestry_matchethnicity
-    global ftdna_matches2, ftdna_chromo2, ftdna_icw2, dg_tree, dg_individual
-    global mh_match, mh_ancestors, mh_chromo, mh_icw, mh_tree
+    global ancestry_matchgroups, ancestry_matchtrees, ancestry_treedata, \
+        ancestry_icw, ancestry_ancestorcouple, ancestry_matchethnicity
+    global ftdna_matches2, ftdna_chromo2, ftdna_icw2, dg_tree, dg_individual, \
+        mh_match, mh_ancestors, mh_chromo, mh_icw, mh_tree
+
     logging.getLogger('filter_selected_kits')
     logging.info("Filtering selected kits...")
 
@@ -143,15 +144,10 @@ def filter_selected_kits(filter_session: Session, f_selected_kits):
                 Ancestry_matchGroups.testGuid.in_(selected_guids)).all()
             test_ids['Ancestry_matchGroups'] = [match.Id for match in ancestry_matches]
 
-            # Get matchGuids for use in ancestry_matchtrees
-            match_guids = [group.matchGuid for group in ancestry_matches]
-
-            if ancestry_matchtrees:
-                # Use both selected_guids and match_guids for ancestry_matchtrees
-                guids_to_check = selected_guids + match_guids
-                ancestry_matches_trees = filter_session.query(Ancestry_matchTrees).filter(
-                    Ancestry_matchTrees.matchid.in_(guids_to_check)).all()
-                test_ids['Ancestry_matchTrees'] = [match.Id for match in ancestry_matches_trees]
+        if ancestry_matchtrees:
+            ancestry_matches_trees = filter_session.query(Ancestry_matchTrees).filter(
+                Ancestry_matchTrees.matchid.in_(selected_guids)).all()
+            test_ids['Ancestry_matchTrees'] = [match.Id for match in ancestry_matches_trees]
 
         if ancestry_treedata:
             ancestry_tree_data = filter_session.query(Ancestry_TreeData).filter(
@@ -184,46 +180,45 @@ def filter_selected_kits(filter_session: Session, f_selected_kits):
                 FTDNA_Chromo2.eKit1.in_(selected_guids)).all()
             test_ids['FTDNA_Chromo2'] = [chromo.Id for chromo in ftdna_chromo]
 
-            if ftdna_icw2:
-                ftdna_icw = filter_session.query(FTDNA_ICW2).filter(
-                    FTDNA_ICW2.eKitKit.in_(selected_guids)).all()
-                test_ids['FTDNA_ICW2'] = [icw.Id for icw in ftdna_icw]
+        if ftdna_icw2:
+            ftdna_icw = filter_session.query(FTDNA_ICW2).filter(
+                FTDNA_ICW2.eKitKit.in_(selected_guids)).all()
+            test_ids['FTDNA_ICW2'] = [icw.Id for icw in ftdna_icw]
 
-            if dg_tree:
-                dg_trees = filter_session.query(DGTree).filter(
-                    DGTree.matchID.in_(selected_guids)).all()
-                test_ids['DGTree'] = [tree.Id for tree in dg_trees]
+        if dg_tree:
+            dg_trees = filter_session.query(DGTree).filter(
+                DGTree.matchID.in_(selected_guids)).all()
+            test_ids['DGTree'] = [tree.Id for tree in dg_trees]
 
-            if dg_individual:
-                dg_individuals = filter_session.query(DGIndividual).filter(
-                    DGIndividual.matchid.in_(selected_guids)).all()
-                test_ids['DGIndividual'] = [individual.Id for individual in dg_individuals]
+        if dg_individual:
+            dg_individuals = filter_session.query(DGIndividual).filter(
+                DGIndividual.matchid.in_(selected_guids)).all()
+            test_ids['DGIndividual'] = [individual.Id for individual in dg_individuals]
 
         # MyHeritage filters
-        if mh_match or mh_ancestors or mh_chromo or mh_icw or mh_tree:
-            if mh_match:
-                mh_matches = filter_session.query(MH_Match).filter(
-                    MH_Match.guid.in_(selected_guids)).all()
-                test_ids['MH_Match'] = [match.Id for match in mh_matches]
+        if mh_match:
+            mh_matches = filter_session.query(MH_Match).filter(
+                MH_Match.guid.in_(selected_guids)).all()
+            test_ids['MH_Match'] = [match.Id for match in mh_matches]
 
-            if mh_ancestors:
-                mh_ancestors_data = filter_session.query(MH_Ancestors).filter(
-                    MH_Ancestors.matchid.in_(selected_guids)).all()
-                test_ids['MH_Ancestors'] = [ancestor.Id for ancestor in mh_ancestors_data]
+        if mh_ancestors:
+            mh_ancestors_data = filter_session.query(MH_Ancestors).filter(
+                MH_Ancestors.matchid.in_(selected_guids)).all()
+            test_ids['MH_Ancestors'] = [ancestor.Id for ancestor in mh_ancestors_data]
 
-            if mh_chromo:
-                mh_chromo_data = filter_session.query(MH_Chromo).filter(
-                    MH_Chromo.guid.in_(selected_guids)).all()
-                test_ids['MH_Chromo'] = [chromo.Id for chromo in mh_chromo_data]
+        if mh_chromo:
+            mh_chromo_data = filter_session.query(MH_Chromo).filter(
+                MH_Chromo.guid.in_(selected_guids)).all()
+            test_ids['MH_Chromo'] = [chromo.Id for chromo in mh_chromo_data]
 
-            if mh_icw:
-                mh_icw_data = filter_session.query(MH_ICW).filter(
-                    MH_ICW.id1.in_(selected_guids)).all()
-                test_ids['MH_ICW'] = [icw.Id for icw in mh_icw_data]
+        if mh_icw:
+            mh_icw_data = filter_session.query(MH_ICW).filter(
+                MH_ICW.id1.in_(selected_guids)).all()
+            test_ids['MH_ICW'] = [icw.Id for icw in mh_icw_data]
 
-            if mh_tree:
-                mh_tree_data = filter_session.query(MH_Tree).all()
-                test_ids['MH_Tree'] = [tree.Id for tree in mh_tree_data]
+        if mh_tree:
+            mh_tree_data = filter_session.query(MH_Tree).all()
+            test_ids['MH_Tree'] = [tree.Id for tree in mh_tree_data]
 
     except Exception as filter_e:
         logging.error(f"Error filtering selected kits: {filter_e}")
