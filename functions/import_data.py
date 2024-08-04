@@ -375,10 +375,8 @@ def process_ancestry(session: Session, filtered_ids):
     logging.info("Processing Ancestry data...")
 
     processed_ancestry_data = []
-    id_mapping = {}  # Initialize id_mapping dictionary
-
+    id_mapping = {}
     try:
-        id_mapping = {}
         # Process Ancestry_MatchGroups data
         if ancestry_matchgroups and filtered_ids.get('Ancestry_matchGroups'):
             def process_matchgroup(mg_session, group):
