@@ -16,7 +16,7 @@ from sqlalchemy.orm import declarative_base, relationship, Session, sessionmaker
 from sqlalchemy.schema import CreateIndex
 
 # Switches
-limit = 500
+limit = 0
 # Ancestry
 ancestry_matchgroups = 1
 ancestry_matchtrees = 1
@@ -1240,7 +1240,7 @@ def import_profiles(rm_session: Session, selected_kits):
 
             # Retrieve PersonID and process NameTable records
             person_id = person_record.PersonID
-            existing_name = rm_session.query(NameTable).filter_by(OwnerID=person_id, NameType=6).first()
+            existing_name = rm_session.query(NameTable).filter_by(OwnerID=person_id, NameType=0).first()
 
             if existing_name:
                 # Update existing name record
@@ -2156,8 +2156,8 @@ def insert_dna(dna_rm_session: Session, processed_data, selected_kits, batch_siz
 
                     person_id_2 = data.get('PersonID')
 
-                    label1 = f"{data['Given']} {data['Surname']}"
-                    label2 = data['unique_id']
+                    label1 = data['testGuid']
+                    label2 = data['matchGuid']
                     note = (f"https://www.ancestry.com/discoveryui-matches/compare/"
                             f"{data['testGuid']}/with/{data.get('matchGuid')}")
 
