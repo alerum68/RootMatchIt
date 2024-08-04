@@ -410,6 +410,8 @@ def process_ancestry(session: Session, filtered_ids):
                     'FatherID': father_id,
                     'MotherID': mother_id,
                     'unique_id': group.matchGuid,
+                    'matchGuid': group.matchGuid,
+                    'testGuid': group.testGuid,
                     'sex': sex,
                     'color': color,
                     'matchTestDisplayName': group.matchTestDisplayName,
@@ -1246,7 +1248,7 @@ def insert_dna(dna_rm_session: Session, processed_data, selected_kits, batch_siz
                     label1 = f"{data['Given']} {data['Surname']}"
                     label2 = data['unique_id']
                     note = (f"https://www.ancestry.com/discoveryui-matches/compare/"
-                            f"{data['unique_id']}/with/{data.get('PersonID')}")
+                            f"{data['testGuid']}/with/{data.get('matchGuid')}")
 
                 elif data['source'] == 'process_icw':
                     match_guid = data['matchGuid']
@@ -1260,7 +1262,8 @@ def insert_dna(dna_rm_session: Session, processed_data, selected_kits, batch_siz
 
                     label1 = match_guid
                     label2 = icw_guid
-                    note = f"ICW: {match_guid} and {icw_guid}"
+                    note = (f"https://www.ancestry.com/discoveryui-matches/compare/"
+                            f"{data['matchGuid']}/with/{data.get('icwGuid')}")
 
                 else:
                     continue
