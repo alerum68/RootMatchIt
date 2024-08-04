@@ -138,12 +138,13 @@ def filter_selected_kits(filter_session: Session, f_selected_kits):
 
     try:
         # Ancestry filters
+        match_guids = []
         if ancestry_matchgroups:
             ancestry_matches = filter_session.query(Ancestry_matchGroups).filter(
                 Ancestry_matchGroups.testGuid.in_(selected_guids)).all()
             test_ids['Ancestry_matchGroups'] = [match.Id for match in ancestry_matches]
 
-            # Get matchGuids for use in ancestry_matchtrees
+            # Get matchGuids for use in other Ancestry tables
             match_guids = [group.matchGuid for group in ancestry_matches]
 
             if ancestry_matchtrees:
@@ -160,7 +161,7 @@ def filter_selected_kits(filter_session: Session, f_selected_kits):
 
         if ancestry_icw:
             ancestry_icw_data = filter_session.query(Ancestry_ICW).filter(
-                Ancestry_ICW.matchid.in_(selected_guids)).all()
+                Ancestry_ICW.matchid.in_(match_guids)).all()
             test_ids['Ancestry_ICW'] = [icw.Id for icw in ancestry_icw_data]
 
         if ancestry_ancestorcouple:
@@ -170,7 +171,7 @@ def filter_selected_kits(filter_session: Session, f_selected_kits):
 
         if ancestry_matchethnicity:
             ancestry_match_ethnicity = filter_session.query(Ancestry_matchEthnicity).filter(
-                Ancestry_matchEthnicity.matchGuid.in_(selected_guids)).all()
+                Ancestry_matchEthnicity.matchGuid.in_(match_guids)).all()
             test_ids['Ancestry_matchEthnicity'] = [ethnicity.Id for ethnicity in ancestry_match_ethnicity]
 
         # FTDNA filters
@@ -564,20 +565,16 @@ def process_ancestry(session: Session, filtered_ids):
         # Process Ancestry_ICW data
         if ancestry_icw and filtered_ids.get('Ancestry_ICW'):
             def process_icw(icw):
-                match_tree = session.query(Ancestry_matchTrees).filter_by(matchid=icw.matchid).first()
-                person_id = hash_id(match_tree.personId,
-                                    id_mapping) if match_tree and match_tree.personId is not None else None
-
                 return {
                     'source': 'process_icw',
-                    'PersonID': person_id,
-                    'testGuid': icw.matchid,
-                    'matchGuid': icw.icwid,
+                    'matchGuid': icw.matchid,
+                    'icwGuid': icw.icwid,
                     'Date': icw.created_date,
                     'sharedCM': icw.sharedCentimorgans,
                     'confidence': icw.confidence,
                     'meiosis': icw.meiosis,
                     'numSharedSegments': icw.numSharedSegments,
+                    'DNAProvider': 2,
                 }
 
             try:
@@ -932,13 +929,16 @@ def insert_person(person_rm_session: Session, processed_data, batch_size=limit):
         processed_count = 0
         blank_record_count = 0
         for data in processed_data:
+            if data.get('source') == 'process_icw':
+                continue
+
             person_id = data.get('PersonID')
             relid = data.get('relid')
             unique_id = data.get('unique_id')
             sex_value = data.get('sex', '')
 
             # logging.debug(f"Processing record: PersonID: {person_id}, "
-            #              f"UniqueID: {unique_id}, sex: {sex_value}, relid: {relid}")
+            #               f"UniqueID: {unique_id}, sex: {sex_value}, relid: {relid}")
 
             if person_id is None and not unique_id:
                 blank_record_count += 1
@@ -1006,6 +1006,8 @@ def insert_name(name_rm_session: Session, processed_data, batch_size=limit):
     try:
         processed_count = 0
         for data in processed_data:
+            if data.get('source') == 'process_icw':
+                continue
             # Get PersonID from processed_data
             person_id = data.get('PersonID') or data.get('personId')
 
@@ -1078,6 +1080,10 @@ def insert_family(family_rm_session: Session, processed_data, batch_size=limit):
         processed_count = 0
 
         for data in processed_data:
+
+            if data.get('source') == 'process_icw':
+                continue
+
             family_id = data.get('FamilyID')
             father_id = data.get('FatherID')
             mother_id = data.get('MotherID')
@@ -1169,6 +1175,9 @@ def insert_child(child_rm_session: Session, processed_data, batch_size=limit):
         processed_count = 0
 
         for data in processed_data:
+            if data.get('source') == 'process_icw':
+                continue
+
             child_id = data.get('PersonID')
             family_id = data.get('FamilyID')
 
@@ -1227,7 +1236,7 @@ def insert_dna(dna_rm_session: Session, processed_data, selected_kits, batch_siz
 
         for kit in selected_kits:
             selected_kit_guid = kit[1]
-            logging.info(f"Processing data for kit GUID: {selected_kit_guid}")
+            #  logging.info(f"Processing data for kit GUID: {selected_kit_guid}")
 
             for data in processed_data:
                 if 'source' in data and data['source'] == 'process_matchgroup':
@@ -1239,45 +1248,61 @@ def insert_dna(dna_rm_session: Session, processed_data, selected_kits, batch_siz
                     label1 = f"{data['Given']} {data['Surname']}"
                     label2 = data['unique_id']
                     note = (f"https://www.ancestry.com/discoveryui-matches/compare/"
-                            f"{selected_kit_guid}/with/{data['unique_id']}")
-                    shared_cm = data.get('sharedCM')
-                    date = data.get('Date') or data.get('matchRunDate')
+                            f"{data['unique_id']}/with/{data.get('PersonID')}")
 
-                    # Construct dna_data for insertion
-                    dna_data = {
-                        'ID1': person_id_1,
-                        'ID2': person_id_2,
-                        'Label1': label1,
-                        'Label2': label2,
-                        'DNAProvider': data.get('DNAProvider'),
-                        'SharedCM': shared_cm,
-                        'SharedPercent': round(shared_cm / 69, 2) if shared_cm else None,
-                        'SharedSegs': data.get('SharedSegs'),
-                        'Date': date,
-                        'Note': note,
-                        'UTCModDate': func.julianday(func.current_timestamp()) - 2415018.5,
-                    }
+                elif data['source'] == 'process_icw':
+                    match_guid = data['matchGuid']
+                    icw_guid = data['icwGuid']
 
-                    # logging.debug(f"DNA data constructed for insertion: {dna_data}")
+                    person_1 = dna_rm_session.query(PersonTable).filter_by(UniqueID=match_guid).first()
+                    person_id_1 = person_1.PersonID if person_1 else None
 
-                    # Check if a DNA record already exists for the given ID1 and ID2
-                    existing_dna = dna_rm_session.query(DNATable).filter_by(ID1=person_id_1, ID2=person_id_2).first()
+                    person_2 = dna_rm_session.query(PersonTable).filter_by(UniqueID=icw_guid).first()
+                    person_id_2 = person_2.PersonID if person_2 else None
 
-                    if existing_dna:
-                        # Update existing record
-                        for key, value in dna_data.items():
-                            setattr(existing_dna, key, value)
-                        existing_dna.UTCModDate = func.julianday(func.current_timestamp()) - 2415018.5
-                        # logging.debug(f"Updated existing DNA record for ID1: {person_id_1} and ID2: {person_id_2}")
-                    else:
-                        # Create new record in DNATable
-                        new_dna = DNATable(**dna_data)
-                        dna_rm_session.add(new_dna)
-                        # logging.debug(f"Inserted new DNA record for ID1: {person_id_1} and ID2: {person_id_2}")
+                    label1 = match_guid
+                    label2 = icw_guid
+                    note = f"ICW: {match_guid} and {icw_guid}"
 
-                    processed_count += 1
-                    if batch_size > 0 and processed_count % batch_size == 0:
-                        dna_rm_session.flush()
+                else:
+                    continue
+
+                if not person_id_1 or not person_id_2:
+                    continue
+
+                shared_cm = data.get('sharedCM')
+                date = data.get('Date') or data.get('matchRunDate')
+
+                dna_data = {
+                    'ID1': person_id_1,
+                    'ID2': person_id_2,
+                    'Label1': label1,
+                    'Label2': label2,
+                    'DNAProvider': data.get('DNAProvider'),
+                    'SharedCM': shared_cm,
+                    'SharedPercent': round(shared_cm / 69, 2) if shared_cm else None,
+                    'SharedSegs': data.get('SharedSegs'),
+                    'Date': date,
+                    'Note': note,
+                    'UTCModDate': func.julianday(func.current_timestamp()) - 2415018.5,
+                }
+
+                existing_dna = (dna_rm_session.query(DNATable)
+                                .filter(((DNATable.ID1 == person_id_1) & (DNATable.ID2 == person_id_2)) |
+                                        ((DNATable.ID1 == person_id_2) & (DNATable.ID2 == person_id_1)))
+                                .first())
+
+                if existing_dna:
+                    for key, value in dna_data.items():
+                        setattr(existing_dna, key, value)
+                    existing_dna.UTCModDate = func.julianday(func.current_timestamp()) - 2415018.5
+                else:
+                    new_dna = DNATable(**dna_data)
+                    dna_rm_session.add(new_dna)
+
+                processed_count += 1
+                if batch_size > 0 and processed_count % batch_size == 0:
+                    dna_rm_session.flush()
 
         dna_rm_session.commit()
         logging.info(f"Processed {processed_count} DNA records.")
@@ -1443,6 +1468,8 @@ def insert_events(event_rm_session: Session, processed_data, batch_size=limit):
         processed_count = 0
 
         for data in processed_data:
+            if data.get('source') == 'process_icw':
+                continue
             try:
                 if data is None:
                     logger.warning("Encountered None data entry, skipping...")
