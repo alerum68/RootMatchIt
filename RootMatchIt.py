@@ -2254,13 +2254,13 @@ def insert_events(event_rm_session: Session, processed_data, batch_size=limit):
         }
 
         # Regular expressions for different date formats
-        full_date_re = r"^(?P<day>\d{1,2}) (?P<month>\w{3,9}) (?P<year>-?\d{1,4})(?: BC)?$"
-        month_year_re = r"^(?P<month>\w{3,9}) (?P<year>-?\d{1,4})(?: BC)?$"
-        year_only_re = r"^(?P<year>-?\d{1,4})(?: BC)?$"
+        full_date_re = r"^(?P<day>\d{1,2}) (?P<month>\w{3,9}) (?P<year>-?\d{1,4})(?: bc)?$"
+        month_year_re = r"^(?P<month>\w{3,9}) (?P<year>-?\d{1,4})(?: bc)?$"
+        year_only_re = r"^(?P<year>-?\d{1,4})(?: bc)?$"
         day_month_re = r"^(?P<day>\d{1,2}) (?P<month>\w{3,9})$"
         month_only_re = r"^(?P<month>\w{3,9})$"
-        between_years_re = (r"^(T?between|bet) (?P<start_year>-?\d{1,4})(?: BC)? "
-                            r"(and|-) (?P<end_year>-?\d{1,4})(?: BC)?$")
+        between_years_re = (r"^(t?between|bet) (?P<start_year>-?\d{1,4})(?: bc)? "
+                            r"(and|-) (?P<end_year>-?\d{1,4})(?: bc)?$")
         double_date_re = r"^(?P<day>\d{1,2}) (?P<month>\w{3,9}) (?P<year>\d{4})/(?P<alt_year>\d{2})$"
         quaker_date_re = r"^(?P<day>\d{1,2})da (?P<month>\d{1,2})mo (?P<year>\d{4})$"
 
@@ -2292,20 +2292,20 @@ def insert_events(event_rm_session: Session, processed_data, batch_size=limit):
             return f"{date_type}.{bc_sign}{f_year}{f_month}{f_day}{double_date_sign}.+00000000.."
 
         for qual, code in qualifiers.items():
-            if date_str.startswith(qual):
-                date_str = date_str[len(qual):].strip()
+            if re.match(rf"^{re.escape(qual)}\W", date_str):
+                date_str = re.sub(rf"^{re.escape(qual)}\W*", "", date_str).strip()
                 date_code = transform_date(date_str)
                 return f"{date_code[:12]}{code}{date_code[13:]}"
 
         for mod, code in directional_modifiers.items():
-            if date_str.startswith(mod):
-                date_str = date_str[len(mod):].strip()
+            if re.match(rf"^{re.escape(mod)}\W", date_str):
+                date_str = re.sub(rf"^{re.escape(mod)}\W*", "", date_str).strip()
                 date_code = transform_date(date_str)
                 return f"{date_code[:1]}{code}{date_code[2:]}"
 
         for mod, code in qualitative_modifiers.items():
-            if date_str.startswith(mod):
-                date_str = date_str[len(mod):].strip()
+            if re.match(rf"^{re.escape(mod)}\W", date_str):
+                date_str = re.sub(rf"^{re.escape(mod)}\W*", "", date_str).strip()
                 date_code = transform_date(date_str)
                 return f"{date_code[:12]}{code}{date_code[13:]}"
 
@@ -2315,7 +2315,7 @@ def insert_events(event_rm_session: Session, processed_data, batch_size=limit):
             day = match.group("day")
             month = month_map.get(match.group("month"), "00")
             year = match.group("year")
-            bc = "BC" in date_str
+            bc = "bc" in date_str
             return format_date(year, month, day, bc)
 
         # Handle month and year
@@ -2323,14 +2323,14 @@ def insert_events(event_rm_session: Session, processed_data, batch_size=limit):
         if match:
             month = month_map.get(match.group("month"), "00")
             year = match.group("year")
-            bc = "BC" in date_str
+            bc = "bc" in date_str
             return format_date(year, month, None, bc)
 
         # Handle year only
         match = re.match(year_only_re, date_str)
         if match:
             year = match.group("year")
-            bc = "BC" in date_str
+            bc = "bc" in date_str
             return format_date(year, None, None, bc)
 
         # Handle day and month only
@@ -2367,8 +2367,8 @@ def insert_events(event_rm_session: Session, processed_data, batch_size=limit):
         if match:
             start_year = match.group("start_year")
             end_year = match.group("end_year")
-            start_bc = "BC" in date_str.split("and")[0]
-            end_bc = "BC" in date_str.split("and")[1]
+            start_bc = "bc" in date_str.split("and")[0]
+            end_bc = "bc" in date_str.split("and")[1]
             start_sign = "-" if start_bc else "+"
             end_sign = "-" if end_bc else "+"
             return f"R.{start_sign}{start_year.zfill(4)}0000..{end_sign}{end_year.zfill(4)}0000.."
