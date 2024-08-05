@@ -7,6 +7,7 @@ import traceback
 import uuid
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
+from tqdm import tqdm
 from sqlalchemy import BigInteger, Column, create_engine, Float, func, ForeignKey, Index, Integer, String, text, \
     inspect, Text, UniqueConstraint
 from sqlalchemy.event import listen
@@ -1035,7 +1036,7 @@ def filter_selected_kits(filter_session: Session, f_selected_kits):
     global ftdna_matches2, ftdna_chromo2, ftdna_icw2, dg_tree, dg_individual
     global mh_match, mh_ancestors, mh_chromo, mh_icw, mh_tree
     logging.getLogger('filter_selected_kits')
-    logging.info("Filtering selected kits...")
+    # logging.info("Filtering selected kits...")
 
     selected_guids = [kit[1] for kit in f_selected_kits]
     test_ids = {
