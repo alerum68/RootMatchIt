@@ -1181,7 +1181,7 @@ def insert_fact_type(fact_rm_session: Session):
             fact_type.Flags = 2147483647
             fact_type.UTCModDate = func.julianday(func.current_timestamp()) - 2415018.5
             fact_rm_session.commit()
-            logging.info("Fact Type 'DNA Kit' updated in FactTypeTable.")
+            # logging.info("Fact Type 'DNA Kit' updated in FactTypeTable.")
     except Exception as e:
         logging.error(f"Error inserting or updating Fact Type 'DNA Kit' in FactTypeTable: {e}")
         logging.error(traceback.format_exc())
@@ -1240,7 +1240,7 @@ def import_profiles(rm_session: Session, selected_kits):
 
             # Retrieve PersonID and process NameTable records
             person_id = person_record.PersonID
-            existing_name = rm_session.query(NameTable).filter_by(OwnerID=person_id, NameType=6).first()
+            existing_name = rm_session.query(NameTable).filter_by(OwnerID=person_id, NameType=0).first()
 
             if existing_name:
                 # Update existing name record
@@ -1276,14 +1276,14 @@ def import_profiles(rm_session: Session, selected_kits):
             rm_session.rollback()
 
     rm_session.commit()
-    logging.info("Inserted or updated selected Profiles.")
+    # logging.info("Inserted or updated selected Profiles.")
 
 
 # Process Ancestry data
 def process_ancestry(session: Session, filtered_ids):
     global limit
     logging.getLogger('process_ancestry')
-    logging.info("Processing Ancestry data...")
+    # logging.info("Processing Ancestry data...")
 
     processed_ancestry_data = []
     id_mapping = {}
@@ -1600,7 +1600,7 @@ def process_ancestry(session: Session, filtered_ids):
 def process_ftdna(session: Session, filtered_ids):
     global limit
     logging.getLogger('process_ftdna')
-    logging.info("Processing FTDNA data...")
+    # logging.info("Processing FTDNA data...")
 
     processed_ftdna_data = []
 
@@ -1712,7 +1712,7 @@ def process_ftdna(session: Session, filtered_ids):
 def process_mh(session: Session, filtered_ids):
     global limit
     logging.getLogger('process_mh')
-    logging.info("Processing MyHeritage data...")
+    # logging.info("Processing MyHeritage data...")
 
     processed_mh_data = []
 
@@ -1829,7 +1829,7 @@ def process_mh(session: Session, filtered_ids):
 # Import data into RootsMagic PersonTable.
 def insert_person(person_rm_session: Session, processed_data, batch_size=limit):
     logging.getLogger('insert_person')
-    logging.info("Inserting or updating individuals in PersonTable...")
+    # logging.info("Inserting or updating individuals in PersonTable...")
 
     if person_rm_session is None:
         logging.error("Invalid person_rm_session object provided")
@@ -1907,7 +1907,7 @@ def insert_person(person_rm_session: Session, processed_data, batch_size=limit):
 # Import data into RootsMagic NameTable.
 def insert_name(name_rm_session: Session, processed_data, batch_size=limit):
     logging.getLogger('insert_name')
-    logging.info("Inserting or updating names in NameTable...")
+    # logging.info("Inserting or updating names in NameTable...")
 
     if name_rm_session is None:
         logging.error("Invalid name_rm_session object provided")
@@ -1985,7 +1985,7 @@ def insert_name(name_rm_session: Session, processed_data, batch_size=limit):
 # Import data into RootsMagic FamilyTable
 def insert_family(family_rm_session: Session, processed_data, batch_size=limit):
     logging.getLogger('insert_family')
-    logging.info("Inserting or updating family data in FamilyTable...")
+    # logging.info("Inserting or updating family data in FamilyTable...")
 
     try:
         processed_count = 0
@@ -2080,7 +2080,7 @@ def insert_family(family_rm_session: Session, processed_data, batch_size=limit):
 # Import data into RootsMagic ChildTable
 def insert_child(child_rm_session: Session, processed_data, batch_size=limit):
     logging.getLogger('insert_child')
-    logging.info("Inserting or updating children in ChildTable...")
+    # logging.info("Inserting or updating children in ChildTable...")
 
     try:
         processed_count = 0
@@ -2140,7 +2140,7 @@ def insert_child(child_rm_session: Session, processed_data, batch_size=limit):
 # Import data into RootsMagic DNATable
 def insert_dna(dna_rm_session: Session, processed_data, selected_kits, batch_size=limit):
     logging.getLogger('insert_dna')
-    logging.info("Inserting or updating DNA data in DNATable...")
+    # logging.info("Inserting or updating DNA data in DNATable...")
 
     try:
         processed_count = 0
@@ -2156,8 +2156,8 @@ def insert_dna(dna_rm_session: Session, processed_data, selected_kits, batch_siz
 
                     person_id_2 = data.get('PersonID')
 
-                    label1 = f"{data['Given']} {data['Surname']}"
-                    label2 = data['unique_id']
+                    label1 = data['testGuid']
+                    label2 = data['matchGuid']
                     note = (f"https://www.ancestry.com/discoveryui-matches/compare/"
                             f"{data['testGuid']}/with/{data.get('matchGuid')}")
 
@@ -2230,7 +2230,7 @@ def insert_dna(dna_rm_session: Session, processed_data, selected_kits, batch_siz
 
 def insert_events(event_rm_session: Session, processed_data, batch_size=limit):
     logger = logging.getLogger('insert_events')
-    logger.info("Inserting or updating places and events...")
+    # logger.info("Inserting or updating places and events...")
 
     def transform_date(date_str):
         if not date_str:
@@ -2254,13 +2254,13 @@ def insert_events(event_rm_session: Session, processed_data, batch_size=limit):
         }
 
         # Regular expressions for different date formats
-        full_date_re = r"^(?P<day>\d{1,2}) (?P<month>\w{3,9}) (?P<year>-?\d{1,4})(?: BC)?$"
-        month_year_re = r"^(?P<month>\w{3,9}) (?P<year>-?\d{1,4})(?: BC)?$"
-        year_only_re = r"^(?P<year>-?\d{1,4})(?: BC)?$"
+        full_date_re = r"^(?P<day>\d{1,2}) (?P<month>\w{3,9}) (?P<year>-?\d{1,4})(?: bc)?$"
+        month_year_re = r"^(?P<month>\w{3,9}) (?P<year>-?\d{1,4})(?: bc)?$"
+        year_only_re = r"^(?P<year>-?\d{1,4})(?: bc)?$"
         day_month_re = r"^(?P<day>\d{1,2}) (?P<month>\w{3,9})$"
         month_only_re = r"^(?P<month>\w{3,9})$"
-        between_years_re = (r"^(T?between|bet) (?P<start_year>-?\d{1,4})(?: BC)? "
-                            r"(and|-) (?P<end_year>-?\d{1,4})(?: BC)?$")
+        between_years_re = (r"^(t?between|bet) (?P<start_year>-?\d{1,4})(?: bc)? "
+                            r"(and|-) (?P<end_year>-?\d{1,4})(?: bc)?$")
         double_date_re = r"^(?P<day>\d{1,2}) (?P<month>\w{3,9}) (?P<year>\d{4})/(?P<alt_year>\d{2})$"
         quaker_date_re = r"^(?P<day>\d{1,2})da (?P<month>\d{1,2})mo (?P<year>\d{4})$"
 
@@ -2292,20 +2292,20 @@ def insert_events(event_rm_session: Session, processed_data, batch_size=limit):
             return f"{date_type}.{bc_sign}{f_year}{f_month}{f_day}{double_date_sign}.+00000000.."
 
         for qual, code in qualifiers.items():
-            if date_str.startswith(qual):
-                date_str = date_str[len(qual):].strip()
+            if re.match(rf"^{re.escape(qual)}\W", date_str):
+                date_str = re.sub(rf"^{re.escape(qual)}\W*", "", date_str).strip()
                 date_code = transform_date(date_str)
                 return f"{date_code[:12]}{code}{date_code[13:]}"
 
         for mod, code in directional_modifiers.items():
-            if date_str.startswith(mod):
-                date_str = date_str[len(mod):].strip()
+            if re.match(rf"^{re.escape(mod)}\W", date_str):
+                date_str = re.sub(rf"^{re.escape(mod)}\W*", "", date_str).strip()
                 date_code = transform_date(date_str)
                 return f"{date_code[:1]}{code}{date_code[2:]}"
 
         for mod, code in qualitative_modifiers.items():
-            if date_str.startswith(mod):
-                date_str = date_str[len(mod):].strip()
+            if re.match(rf"^{re.escape(mod)}\W", date_str):
+                date_str = re.sub(rf"^{re.escape(mod)}\W*", "", date_str).strip()
                 date_code = transform_date(date_str)
                 return f"{date_code[:12]}{code}{date_code[13:]}"
 
@@ -2315,7 +2315,7 @@ def insert_events(event_rm_session: Session, processed_data, batch_size=limit):
             day = match.group("day")
             month = month_map.get(match.group("month"), "00")
             year = match.group("year")
-            bc = "BC" in date_str
+            bc = "bc" in date_str
             return format_date(year, month, day, bc)
 
         # Handle month and year
@@ -2323,14 +2323,14 @@ def insert_events(event_rm_session: Session, processed_data, batch_size=limit):
         if match:
             month = month_map.get(match.group("month"), "00")
             year = match.group("year")
-            bc = "BC" in date_str
+            bc = "bc" in date_str
             return format_date(year, month, None, bc)
 
         # Handle year only
         match = re.match(year_only_re, date_str)
         if match:
             year = match.group("year")
-            bc = "BC" in date_str
+            bc = "bc" in date_str
             return format_date(year, None, None, bc)
 
         # Handle day and month only
@@ -2367,8 +2367,8 @@ def insert_events(event_rm_session: Session, processed_data, batch_size=limit):
         if match:
             start_year = match.group("start_year")
             end_year = match.group("end_year")
-            start_bc = "BC" in date_str.split("and")[0]
-            end_bc = "BC" in date_str.split("and")[1]
+            start_bc = "bc" in date_str.split("and")[0]
+            end_bc = "bc" in date_str.split("and")[1]
             start_sign = "-" if start_bc else "+"
             end_sign = "-" if end_bc else "+"
             return f"R.{start_sign}{start_year.zfill(4)}0000..{end_sign}{end_year.zfill(4)}0000.."
@@ -2492,7 +2492,7 @@ def insert_events(event_rm_session: Session, processed_data, batch_size=limit):
 # Import data into RootsMagic GroupTable
 def insert_group(group_rm_session: Session, processed_data, batch_size=limit):
     logging.getLogger('insert_group')
-    logging.info("Inserting or updating group data in GroupTable...")
+    # logging.info("Inserting or updating group data in GroupTable...")
 
     try:
         processed_count = 0
@@ -2539,7 +2539,7 @@ def insert_group(group_rm_session: Session, processed_data, batch_size=limit):
 # Import data into RootsMagic URLTable
 def insert_url(url_rm_session: Session, processed_data, batch_size=limit):
     logging.getLogger('insert_url')
-    logging.info("Inserting or updating URL data in URLTable...")
+    # logging.info("Inserting or updating URL data in URLTable...")
 
     try:
         processed_count = 0
@@ -2606,24 +2606,24 @@ def rebuild_all_indexes(engine):
     with engine.begin() as conn:
         for table, index_names in tables_indexes:
             table_name = table.__tablename__
-            print(f"Processing table: {table_name}")
+            # print(f"Processing table: {table_name}")
 
             # Drop all existing indexes for this table
             existing_indexes = inspector.get_indexes(table_name)
             for idx in existing_indexes:
                 if idx['name'] in index_names:
                     conn.execute(text(f"DROP INDEX IF EXISTS {idx['name']}"))
-                    print(f"Dropped index {idx['name']} from {table_name}")
+                    # print(f"Dropped index {idx['name']} from {table_name}")
 
             # Reindex the table
             if engine.dialect.name == 'sqlite':
                 # For SQLite, the REINDEX command is used without specifying a table
                 conn.execute(text("REINDEX"))
-                print(f"Reindexed all tables (SQLite)")
+                # print(f"Reindexed all tables (SQLite)")
             else:
                 # For other databases, specify the table
                 conn.execute(text(f"REINDEX TABLE {table_name}"))
-                print(f"Reindexed table {table_name}")
+                # print(f"Reindexed table {table_name}")
 
             # Recreate the indexes
             for index_name in index_names:
@@ -2631,16 +2631,16 @@ def rebuild_all_indexes(engine):
                 if index:
                     create_idx = CreateIndex(index)
                     conn.execute(create_idx)
-                    print(f"Recreated index {index_name} for table {table_name}")
+                    # print(f"Recreated index {index_name} for table {table_name}")
                 else:
                     print(f"Warning: Index {index_name} not found for table {table_name}")
 
             # Analyze the table
             if engine.dialect.name != 'sqlite':
                 conn.execute(text(f"ANALYZE {table_name}"))
-                print(f"Analyzed table {table_name}")
+                # print(f"Analyzed table {table_name}")
 
-    print("All indexes rebuilt and tables reindexed successfully")
+    # print("All indexes rebuilt and tables reindexed successfully")
 
 
 def main():
@@ -2655,11 +2655,11 @@ def main():
         logging.critical("Failed to connect to one or both databases using SQLAlchemy.")
         return
 
-    logging.info("Fetching user kit data...")
+    # logging.info("Fetching user kit data...")
     dna_kits = user_kit_data(dg_session)
 
     if dna_kits:
-        logging.info("Prompting user for kits...")
+        # logging.info("Prompting user for kits...")
         selected_kits = prompt_user_for_kits(dna_kits)
 
         logging.info("Selected kits:")
@@ -2669,26 +2669,57 @@ def main():
         filtered_ids = filter_selected_kits(dg_session, selected_kits)
         import_profiles(rm_session, selected_kits)
 
-        # Process different providers and combine into processed_data.
-        processed_ancestry_data = process_ancestry(dg_session, filtered_ids)
-        processed_ftdna_data = process_ftdna(dg_session, filtered_ids)
-        processed_mh_data = process_mh(dg_session, filtered_ids)
-        processed_data = processed_ancestry_data + processed_ftdna_data + processed_mh_data
+        # Overall progress bar
+        with tqdm(total=11, desc="Overall Progress") as pbar:
+            try:
+                logging.info("Processing Ancestry data...")
+                processed_ancestry_data = process_ancestry(dg_session, filtered_ids)
+                pbar.update(1)
 
-        try:
-            insert_fact_type(rm_session)
-            insert_person(rm_session, processed_data)
-            insert_name(rm_session, processed_data)
-            insert_family(rm_session, processed_data)
-            insert_child(rm_session, processed_data)
-            insert_dna(rm_session, processed_data, selected_kits)
-            insert_events(rm_session, processed_data)
-            # insert_url(rm_session, processed_data)
-            # insert_group(rm_session, processed_data)
-            rebuild_all_indexes(rm_engine)
-        except Exception as e:
-            logging.error(f"Error during data insertion: {e}")
-            logging.error(traceback.format_exc())
+                logging.info("Processing FTDNA data...")
+                processed_ftdna_data = process_ftdna(dg_session, filtered_ids)
+                pbar.update(1)
+
+                logging.info("Processing MyHeritage data...")
+                processed_mh_data = process_mh(dg_session, filtered_ids)
+                pbar.update(1)
+
+                processed_data = processed_ancestry_data + processed_ftdna_data + processed_mh_data
+
+                # logging.info("Inserting fact types...")
+                insert_fact_type(rm_session)
+                pbar.update(1)
+
+                logging.info("Inserting persons...")
+                insert_person(rm_session, processed_data)
+                pbar.update(1)
+
+                logging.info("Inserting names...")
+                insert_name(rm_session, processed_data)
+                pbar.update(1)
+
+                logging.info("Inserting families...")
+                insert_family(rm_session, processed_data)
+                pbar.update(1)
+
+                logging.info("Inserting children...")
+                insert_child(rm_session, processed_data)
+                pbar.update(1)
+
+                logging.info("Inserting DNA records...")
+                insert_dna(rm_session, processed_data, selected_kits)
+                pbar.update(1)
+
+                logging.info("Inserting events...")
+                insert_events(rm_session, processed_data)
+                pbar.update(1)
+
+                logging.info("Rebuilding all indexes...")
+                rebuild_all_indexes(rm_engine)
+                pbar.update(1)
+            except Exception as e:
+                logging.error(f"Error during data insertion: {e}")
+                logging.error(traceback.format_exc())
     else:
         logging.warning("No kits found.")
 
